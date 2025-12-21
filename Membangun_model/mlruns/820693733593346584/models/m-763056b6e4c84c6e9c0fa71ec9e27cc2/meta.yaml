@@ -1,0 +1,10 @@
+artifact_location: file:C:/Users/rezah/OneDrive/Documents/Eksperimen_SML_Fathan_Rezah_Ardhiansa/Membangun_model/mlruns/820693733593346584/models/m-763056b6e4c84c6e9c0fa71ec9e27cc2/artifacts
+creation_timestamp: 1766311428390
+experiment_id: '820693733593346584'
+last_updated_timestamp: 1766311434552
+model_id: m-763056b6e4c84c6e9c0fa71ec9e27cc2
+model_type: null
+name: model
+source_run_id: d7cc72e70ab84efea592e6432280300f
+status: 2
+status_message: null

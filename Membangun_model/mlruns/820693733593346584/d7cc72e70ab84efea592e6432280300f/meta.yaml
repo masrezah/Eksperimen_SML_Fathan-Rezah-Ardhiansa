@@ -1,0 +1,14 @@
+artifact_uri: file:C:/Users/rezah/OneDrive/Documents/Eksperimen_SML_Fathan_Rezah_Ardhiansa/Membangun_model/mlruns/820693733593346584/d7cc72e70ab84efea592e6432280300f/artifacts
+end_time: 1766311434650
+entry_point_name: ''
+experiment_id: '820693733593346584'
+lifecycle_stage: active
+run_id: d7cc72e70ab84efea592e6432280300f
+run_name: Linear_Regression
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1766311428282
+status: 3
+tags: []
+user_id: rezah

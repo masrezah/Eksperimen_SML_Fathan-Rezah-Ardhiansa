@@ -1,0 +1,15 @@
+digest: 4cf4b5c4
+name: dataset
+profile: '{"num_rows": 404, "num_elements": 5252}'
+schema: '{"mlflow_colspec": [{"type": "double", "name": "CRIM", "required": true},
+  {"type": "double", "name": "ZN", "required": true}, {"type": "double", "name": "INDUS",
+  "required": true}, {"type": "double", "name": "CHAS", "required": true}, {"type":
+  "double", "name": "NOX", "required": true}, {"type": "double", "name": "RM", "required":
+  true}, {"type": "double", "name": "AGE", "required": true}, {"type": "double", "name":
+  "DIS", "required": true}, {"type": "long", "name": "RAD", "required": true}, {"type":
+  "long", "name": "TAX", "required": true}, {"type": "double", "name": "PTRATIO",
+  "required": true}, {"type": "double", "name": "B", "required": true}, {"type": "double",
+  "name": "LSTAT", "required": true}]}'
+source: '{"tags": {"mlflow.user": "rezah", "mlflow.source.name": "modelling.py", "mlflow.source.type":
+  "LOCAL"}}'
+source_type: code

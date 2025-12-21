@@ -1,0 +1,9 @@
+digest: 95aa85f4
+name: dataset
+profile: '{"features_shape": [102, 13], "features_size": 1326, "features_nbytes":
+  10608}'
+schema: '{"mlflow_tensorspec": {"features": "[{\"type\": \"tensor\", \"tensor-spec\":
+  {\"dtype\": \"float64\", \"shape\": [-1, 13]}}]", "targets": null}}'
+source: '{"tags": {"mlflow.user": "rezah", "mlflow.source.name": "modelling.py", "mlflow.source.type":
+  "LOCAL"}}'
+source_type: code

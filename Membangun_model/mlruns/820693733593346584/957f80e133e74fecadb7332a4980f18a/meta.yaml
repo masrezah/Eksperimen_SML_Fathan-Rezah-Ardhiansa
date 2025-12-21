@@ -1,0 +1,14 @@
+artifact_uri: file:C:/Users/rezah/OneDrive/Documents/Eksperimen_SML_Fathan_Rezah_Ardhiansa/Membangun_model/mlruns/820693733593346584/957f80e133e74fecadb7332a4980f18a/artifacts
+end_time: 1766311440287
+entry_point_name: ''
+experiment_id: '820693733593346584'
+lifecycle_stage: active
+run_id: 957f80e133e74fecadb7332a4980f18a
+run_name: Random_Forest
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1766311434660
+status: 3
+tags: []
+user_id: rezah
