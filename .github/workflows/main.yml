@@ -5,7 +5,7 @@ name: Data Preprocessing dan Analisis Eksperimen MSML
 on:
   push:
     branches: ["main"]
-  workflow_dispatch:  # Memungkinkan untuk menjalankan workflow secara manual
+  workflow_dispatch:
 
 jobs:
   preprocessing:
@@ -17,7 +17,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: "3.8"
+          python-version: "3.10"
 
       - name: Install dependencies
         run: |
@@ -26,12 +26,10 @@ jobs:
 
       - name: Preprocessing Data
         env:
-          input_file: Workflow-CI/MLProject/HousingData.csv
-          output_file: Workflow-CI/MLProject/HousingData_clean.csv
+          input_file: Workflow-CI/MLProject/preprocessing/HousingData.csv
+          output_file: Workflow-CI/MLProject/preprocessing/HousingData_clean.csv
         run: |
-          python Workflow-CI/MLProject/automate_Nama-siswa.py
+          python Workflow-CI/MLProject/preprocessing/automate_Fathan-Rezah-Ardhiansa.py
 
       - name: Echo success message
         run: echo "Preprocessing selesai, hasil disimpan di HousingData_clean.csv"
-
-  # Other jobs (analysis, visualization, etc.) remain unchanged
