@@ -1,4 +1,6 @@
 name: Data Preprocessing dan Analisis Eksperimen MSML
+# Workflow ini digunakan untuk melakukan preprocessing dataset housing,
+# membersihkan data dari missing values, dan melakukan analisis eksploratori serta eksperimen.
 
 on:
   push:
@@ -8,6 +10,7 @@ on:
 jobs:
   preprocessing:
     runs-on: ubuntu-latest
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -23,11 +26,8 @@ jobs:
           pip install -r Workflow-CI/MLProject/requirements.txt
 
       - name: Preprocessing Data
-        env:
-          input_file: Workflow-CI/MLProject/preprocessing/HousingData.csv
-          output_file: Workflow-CI/MLProject/preprocessing/HousingData_clean.csv
         run: |
-          python Workflow-CI/MLProject/preprocessing/automate_Fathan-Rezah-Ardhiansa.py
+          python preprocessing/automate_Fathan-Rezah-Ardhiansa.py
 
       - name: Echo success message
-        run: echo "Preprocessing selesai, hasil disimpan di HousingData_clean.csv"
+        run: echo "Preprocessing selesai, hasil disimpan di preprocessing/HousingData_clean.csv"
