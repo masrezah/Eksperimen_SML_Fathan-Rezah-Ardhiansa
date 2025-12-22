@@ -1,39 +1,33 @@
 name: Data Preprocessing dan Analisis Eksperimen MSML
 
-description: |
-  Workflow ini digunakan untuk melakukan preprocessing dataset housing,
-  membersihkan data dari missing values, dan melakukan analisis eksploratori serta eksperimen.
-
 on:
   push:
     branches: ["main"]
-  workflow_dispatch:  # Memungkinkan untuk menjalankan workflow secara manual
+  workflow_dispatch:
 
 jobs:
   preprocessing:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v2  # Menggunakan versi stabil
+        uses: actions/checkout@v4
 
       - name: Set up Python
-        uses: actions/setup-python@v2  # Menggunakan versi stabil
+        uses: actions/setup-python@v5
         with:
-          python-version: "3.8"
+          python-version: "3.11"
 
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -r Workflow-CI\MLProject\requirements.txt # Perbarui path ke requirements.txt di MLProject
+          pip install -r Workflow-CI/MLProject/requirements.txt
 
       - name: Preprocessing Data
         env:
-          input_file: /mnt/data/HousingData.csv
-          output_file: /mnt/data/HousingData_clean.csv
+          input_file: Workflow-CI/MLProject/preprocessing/HousingData.csv
+          output_file: Workflow-CI/MLProject/preprocessing/HousingData_clean.csv
         run: |
-          python automate_Nama-siswa.py
+          python Workflow-CI/MLProject/preprocessing/automate_Fathan-Rezah-Ardhiansa.py
 
       - name: Echo success message
         run: echo "Preprocessing selesai, hasil disimpan di HousingData_clean.csv"
-
-  # Other jobs (analysis, visualization, etc.) remain unchanged
