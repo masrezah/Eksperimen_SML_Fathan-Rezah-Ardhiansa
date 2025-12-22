@@ -29,5 +29,6 @@ jobs:
         run: |
           python preprocessing/automate_Fathan-Rezah-Ardhiansa.py
 
+
       - name: Echo success message
         run: echo "Preprocessing selesai, hasil disimpan di preprocessing/HousingData_clean.csv"
