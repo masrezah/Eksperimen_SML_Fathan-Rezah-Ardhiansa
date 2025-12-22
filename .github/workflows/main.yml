@@ -38,9 +38,9 @@ jobs:
         env:
           input_file: /mnt/data/HousingData.csv
           output_file: /mnt/data/HousingData_clean.csv
-        # Hapus success_message dan failure_message
-        # Ganti dengan perintah echo untuk status
-        - run: echo "Preprocessing selesai, hasil disimpan di HousingData_clean.csv"
+        # Ganti success_message dengan perintah echo
+        - name: Echo success message
+          run: echo "Preprocessing selesai, hasil disimpan di HousingData_clean.csv"
         continue-on-error: true  # Jika terjadi error, tetap lanjutkan
 
   analysis:
@@ -64,9 +64,9 @@ jobs:
       - name: Analisis Data di Jupyter Notebook
         run: |
           jupyter nbconvert --to notebook --execute /mnt/data/Eksperimen_MSML.ipynb
-        # Hapus success_message dan failure_message
-        # Ganti dengan perintah echo untuk status
-        - run: echo "Analisis selesai. Hasil telah diperbarui di notebook"
+        # Ganti success_message dengan perintah echo
+        - name: Echo success message
+          run: echo "Analisis selesai. Hasil telah diperbarui di notebook"
         continue-on-error: true  # Jika terjadi error, tetap lanjutkan
 
   visualization:
@@ -96,9 +96,9 @@ jobs:
           sns.pairplot(df)
           plt.show()
           "
-        # Hapus success_message dan failure_message
-        # Ganti dengan perintah echo untuk status
-        - run: echo "Visualisasi selesai, tampilkan grafik"
+        # Ganti success_message dengan perintah echo
+        - name: Echo success message
+          run: echo "Visualisasi selesai, tampilkan grafik"
         continue-on-error: true  # Jika terjadi error, tetap lanjutkan
 
   save_results:
@@ -123,7 +123,7 @@ jobs:
         run: |
           # Menyimpan hasil analisis atau model ke file output
           cp /mnt/data/Hasil_Analisis.csv /mnt/data/output/
-        # Hapus success_message dan failure_message
-        # Ganti dengan perintah echo untuk status
-        - run: echo "Hasil analisis berhasil disimpan"
+        # Ganti success_message dengan perintah echo
+        - name: Echo success message
+          run: echo "Hasil analisis berhasil disimpan"
         continue-on-error: true  # Jika terjadi error, tetap lanjutkan
