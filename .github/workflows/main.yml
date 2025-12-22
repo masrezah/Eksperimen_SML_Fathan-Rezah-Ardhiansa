@@ -1,6 +1,8 @@
 name: Data Preprocessing dan Analisis Eksperimen MSML
-# Workflow ini digunakan untuk melakukan preprocessing dataset housing,
-# membersihkan data dari missing values, dan melakukan analisis eksploratori serta eksperimen.
+
+description: |
+  Workflow ini digunakan untuk melakukan preprocessing dataset housing,
+  membersihkan data dari missing values, dan melakukan analisis eksploratori serta eksperimen.
 
 on:
   push:
@@ -15,10 +17,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v2  # Menggunakan versi stabil
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v2  # Menggunakan versi stabil
         with:
           python-version: "3.8"
 
@@ -33,7 +35,6 @@ jobs:
           output_file: /mnt/data/HousingData_clean.csv
         run: |
           python automate_Nama-siswa.py
-        continue-on-error: true  # Jika terjadi error, tetap lanjutkan step berikutnya di job ini
 
       - name: Echo success message
         run: echo "Preprocessing selesai, hasil disimpan di HousingData_clean.csv"
@@ -41,13 +42,13 @@ jobs:
   analysis:
     runs-on: ubuntu-latest
     needs: preprocessing
-    if: ${{ always() }}  # Pastikan job ini tetap berjalan walau job sebelumnya gagal
+    if: ${{ always() }}
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v2
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v2
         with:
           python-version: "3.8"
 
@@ -60,7 +61,6 @@ jobs:
       - name: Analisis Data di Jupyter Notebook
         run: |
           jupyter nbconvert --to notebook --execute /mnt/data/Eksperimen_MSML.ipynb --output /mnt/data/Eksperimen_MSML.out.ipynb
-        continue-on-error: true
 
       - name: Echo success message
         run: echo "Analisis selesai. Hasil telah diperbarui di notebook"
@@ -71,10 +71,10 @@ jobs:
     if: ${{ always() }}
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v2
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v2
         with:
           python-version: "3.8"
 
@@ -94,7 +94,6 @@ jobs:
           sns.pairplot(df)
           plt.savefig('pairplot.png')
           PY
-        continue-on-error: true
 
       - name: Echo success message
         run: echo "Visualisasi selesai, grafik disimpan sebagai pairplot.png"
@@ -105,10 +104,10 @@ jobs:
     if: ${{ always() }}
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v2
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v2
         with:
           python-version: "3.8"
 
@@ -119,10 +118,9 @@ jobs:
 
       - name: Penyimpanan Hasil
         run: |
-          mkdir -p /mnt/data/output
+          mkdir -p $GITHUB_WORKSPACE/output
           # Menyimpan hasil analisis atau model ke file output
-          cp /mnt/data/Hasil_Analisis.csv /mnt/data/output/ || true
-        continue-on-error: true
+          cp /mnt/data/Hasil_Analisis.csv $GITHUB_WORKSPACE/output/ || true
 
       - name: Echo success message
         run: echo "Hasil analisis berhasil disimpan"
