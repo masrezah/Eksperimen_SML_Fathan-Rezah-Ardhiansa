@@ -9,7 +9,6 @@ def load_and_preprocess(input_path: str, output_path: str) -> pd.DataFrame:
     3. Menyimpan dataset yang sudah bersih ke output_path.
     4. Mengembalikan DataFrame yang sudah dipreprocess.
     """
-
     # 1. Load data mentah
     df = pd.read_csv(input_path)
 
@@ -24,10 +23,9 @@ def load_and_preprocess(input_path: str, output_path: str) -> pd.DataFrame:
 
 
 if __name__ == "__main__":
-
-    # Use raw string literals or double backslashes
-    input_path = r"namadataset_raw\HousingData.csv"  # or input_path = "namadataset_raw\\HousingData.csv"
-    output_path = r"preprocessing\HousingData_clean.csv"  # or output_path = "preprocessing\\HousingData_clean.csv"
+    # Gunakan path dengan forward slash (/) supaya jalan di Linux (GitHub Actions)
+    input_path = "namadataset_raw/HousingData.csv"
+    output_path = "preprocessing/HousingData_clean.csv"
 
     df_clean = load_and_preprocess(input_path, output_path)
 
