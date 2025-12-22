@@ -6,11 +6,8 @@ description: |
 
 on:
   push:
-    branches: ["main"]
-    paths:
-      - "**/*.py"
-      - "**/*.ipynb"
-      - "MLProject/**"
+    branches: ["main"]  # Trigger saat ada push ke branch main
+  workflow_dispatch:  # Memungkinkan untuk menjalankan workflow secara manual
 
 jobs:
   preprocessing:
