@@ -1,1 +1,57 @@
+# Workflow untuk Proses Preprocessing dan Analisis Data
 
+name: Data Preprocessing dan Analisis Eksperimen MSML
+
+description: |
+  Workflow ini digunakan untuk melakukan preprocessing dataset housing, 
+  membersihkan data dari missing values, dan melakukan analisis eksploratori serta eksperimen 
+  menggunakan Jupyter Notebook.
+
+steps:
+  - step_name: Preprocessing Data
+    description: |
+      Membaca file raw housing dataset dan melakukan preprocessing dengan mengisi missing values 
+      menggunakan median kolom numerik.
+    action: python
+    script: automate_Nama-siswa.py
+    input: /mnt/data/HousingData.csv
+    output: /mnt/data/HousingData_clean.csv
+    parameters:
+      - action: clean_data
+        input_file: /mnt/data/HousingData.csv
+        output_file: /mnt/data/HousingData_clean.csv
+    success_message: Preprocessing selesai, hasil disimpan di HousingData_clean.csv.
+    failure_message: Gagal memproses data, periksa skrip dan file input.
+
+  - step_name: Analisis Data di Jupyter Notebook
+    description: |
+      Mengimpor dataset yang sudah diproses untuk dianalisis lebih lanjut menggunakan Jupyter Notebook.
+    action: jupyter_notebook
+    notebook: /mnt/data/Eksperimen_MSML.ipynb
+    input: /mnt/data/HousingData_clean.csv
+    parameters:
+      - action: run_analysis
+        dataset: /mnt/data/HousingData_clean.csv
+    success_message: Analisis selesai. Hasil telah diperbarui di notebook.
+    failure_message: Gagal menjalankan analisis, periksa notebook atau dataset.
+
+  - step_name: Visualisasi Data
+    description: |
+      Membuat visualisasi hasil analisis dan eksperimen dengan menggunakan seaborn atau matplotlib.
+    action: python
+    script: |
+      import matplotlib.pyplot as plt
+      import seaborn as sns
+      df = pd.read_csv("/mnt/data/HousingData_clean.csv")
+      sns.pairplot(df)
+      plt.show()
+    success_message: Visualisasi selesai, tampilkan grafik.
+    failure_message: Gagal membuat visualisasi, periksa data atau skrip visualisasi.
+
+  - step_name: Penyimpanan Hasil
+    description: |
+      Menyimpan hasil analisis atau model ke file output.
+    action: save_file
+    output: /mnt/data/Hasil_Analisis.csv
+    success_message: Hasil analisis berhasil disimpan.
+    failure_message: Gagal menyimpan hasil analisis.
