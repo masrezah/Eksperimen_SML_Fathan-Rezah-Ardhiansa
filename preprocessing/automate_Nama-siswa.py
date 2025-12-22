@@ -1,10 +1,5 @@
-# automate_Nama-siswa.py
-# Contoh: automate_Budi.py
-# File ini melakukan preprocessing otomatis untuk dataset Boston Housing.
-
 import os
 import pandas as pd
-
 
 def load_and_preprocess(input_path: str, output_path: str) -> pd.DataFrame:
     """
@@ -29,9 +24,10 @@ def load_and_preprocess(input_path: str, output_path: str) -> pd.DataFrame:
 
 
 if __name__ == "__main__":
-    # Path relatif dari folder "preprocessing"
-    input_path = "namadataset_raw\HousingData.csv"
-    output_path = "preprocessing\HousingData_clean.csv"
+
+    # Use raw string literals or double backslashes
+    input_path = r"namadataset_raw\HousingData.csv"  # or input_path = "namadataset_raw\\HousingData.csv"
+    output_path = r"preprocessing\HousingData_clean.csv"  # or output_path = "preprocessing\\HousingData_clean.csv"
 
     df_clean = load_and_preprocess(input_path, output_path)
 
