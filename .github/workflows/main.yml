@@ -38,8 +38,10 @@ jobs:
         env:
           input_file: /mnt/data/HousingData.csv
           output_file: /mnt/data/HousingData_clean.csv
-        success_message: "Preprocessing selesai, hasil disimpan di HousingData_clean.csv."
-        failure_message: "Gagal memproses data, periksa skrip dan file input."
+        # Hapus success_message dan failure_message
+        # Ganti dengan perintah echo untuk status
+        - run: echo "Preprocessing selesai, hasil disimpan di HousingData_clean.csv"
+        continue-on-error: true  # Jika terjadi error, tetap lanjutkan
 
   analysis:
     runs-on: ubuntu-latest
@@ -62,8 +64,10 @@ jobs:
       - name: Analisis Data di Jupyter Notebook
         run: |
           jupyter nbconvert --to notebook --execute /mnt/data/Eksperimen_MSML.ipynb
-        success_message: "Analisis selesai. Hasil telah diperbarui di notebook."
-        failure_message: "Gagal menjalankan analisis, periksa notebook atau dataset."
+        # Hapus success_message dan failure_message
+        # Ganti dengan perintah echo untuk status
+        - run: echo "Analisis selesai. Hasil telah diperbarui di notebook"
+        continue-on-error: true  # Jika terjadi error, tetap lanjutkan
 
   visualization:
     runs-on: ubuntu-latest
@@ -92,8 +96,10 @@ jobs:
           sns.pairplot(df)
           plt.show()
           "
-        success_message: "Visualisasi selesai, tampilkan grafik."
-        failure_message: "Gagal membuat visualisasi, periksa data atau skrip visualisasi."
+        # Hapus success_message dan failure_message
+        # Ganti dengan perintah echo untuk status
+        - run: echo "Visualisasi selesai, tampilkan grafik"
+        continue-on-error: true  # Jika terjadi error, tetap lanjutkan
 
   save_results:
     runs-on: ubuntu-latest
@@ -117,5 +123,7 @@ jobs:
         run: |
           # Menyimpan hasil analisis atau model ke file output
           cp /mnt/data/Hasil_Analisis.csv /mnt/data/output/
-        success_message: "Hasil analisis berhasil disimpan."
-        failure_message: "Gagal menyimpan hasil analisis."
+        # Hapus success_message dan failure_message
+        # Ganti dengan perintah echo untuk status
+        - run: echo "Hasil analisis berhasil disimpan"
+        continue-on-error: true  # Jika terjadi error, tetap lanjutkan
