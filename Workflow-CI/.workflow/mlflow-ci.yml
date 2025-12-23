@@ -1,34 +1,49 @@
-name: Data Preprocessing dan Analisis Eksperimen MSML
-# Workflow ini digunakan untuk melakukan preprocessing dataset housing,
-# membersihkan data dari missing values, dan melakukan analisis eksploratori serta eksperimen.
+name: CI Pipeline - Train & Build Docker
 
 on:
   push:
     branches: ["main"]
   workflow_dispatch:
 
-jobs:
-  preprocessing:
-    runs-on: ubuntu-latest
+env:
+  MLFLOW_TRACKING_URI: https://dagshub.com/rezahmas/boston-housing-mlflow.mlflow
+  MLFLOW_TRACKING_USERNAME: rezahmas
+  MLFLOW_TRACKING_PASSWORD: ${{ secrets.DAGSHUB_TOKEN }}
 
+jobs:
+  build-train-docker:
+    runs-on: ubuntu-latest
+    
     steps:
-      - name: Checkout repository
+      - name: Checkout Code
         uses: actions/checkout@v4
 
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
+          python-version: "3.10"
 
-      - name: Install dependencies
+      - name: Install Dependencies
         run: |
-          python -m pip install --upgrade pip
           pip install -r Workflow-CI/MLProject/requirements.txt
 
-      - name: Preprocessing Data
+      - name: Run Preprocessing Script
         run: |
           python preprocessing/automate_Fathan-Rezah-Ardhiansa.py
 
+      - name: Move Clean Data to Project Folder
+        run: |
+          cp preprocessing/HousingData_clean.csv Workflow-CI/MLProject/HousingData_clean.csv
 
-      - name: Echo success message
-        run: echo "Preprocessing selesai, hasil disimpan di preprocessing/HousingData_clean.csv"
+      - name: Run MLflow Training
+        run: |
+          cd Workflow-CI/MLProject
+          mlflow run . --no-conda --experiment-name "CI_Docker_Build"
+
+      - name: Build Docker Image using MLflow
+        run: |
+          cd Workflow-CI/MLProject
+          LAST_RUN_ID=$(mlflow runs list --experiment-id 1 --max-results 1 --output json | jq -r '.[0].run_id')
+          echo "Building Docker for Run ID: $LAST_RUN_ID"
+          mlflow models build-docker --model-uri "runs:/$LAST_RUN_ID/model" --name "boston-model:latest"
+          echo "✅ Docker Image successfully created!"
