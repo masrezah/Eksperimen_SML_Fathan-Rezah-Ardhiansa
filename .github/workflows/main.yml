@@ -21,14 +21,24 @@ jobs:
           python-version: "3.11"
 
       - name: Install dependencies
+        # Pastikan path ini BENAR sesuai struktur folder repo Anda
         run: |
           python -m pip install --upgrade pip
           pip install -r Workflow-CI/MLProject/requirements.txt
 
       - name: Preprocessing Data
+        # Script ini akan menghasilkan file HousingData_clean.csv
         run: |
           python preprocessing/automate_Fathan-Rezah-Ardhiansa.py
 
+      # --- BAGIAN BARU (PENTING) ---
+      - name: Upload Result as Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Cleaned-Housing-Data
+          path: preprocessing/HousingData_clean.csv
+          retention-days: 5
+      # -----------------------------
 
       - name: Echo success message
-        run: echo "Preprocessing selesai, hasil disimpan di preprocessing/HousingData_clean.csv"
+        run: echo "Preprocessing selesai, file berhasil di-upload ke Artifacts."
