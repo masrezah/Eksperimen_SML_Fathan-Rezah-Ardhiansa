@@ -38,27 +38,33 @@ jobs:
         run: |
           pip install -r Workflow-CI/MLProject/requirements.txt
 
-      # 5. Training Model (FIX: Pakai --env-manager=local)
+      # 5. Salin Dataset ke Folder preprocessing
+      - name: Copy dataset to preprocessing folder
+        run: |
+          mkdir -p Workflow-CI/MLProject/preprocessing
+          cp -r $GITHUB_WORKSPACE/namadataset_raw/* Workflow-CI/MLProject/preprocessing/
+
+      # 6. Training Model (FIX: Pakai --env-manager=local)
       - name: Run mlflow project
         run: |
           cd Workflow-CI/MLProject
           mlflow run . --env-manager=local --experiment-name "CI_Docker_Build"
 
-      # 6. Ambil Run ID Terakhir
+      # 7. Ambil Run ID Terakhir
       - name: Get latest MLflow run_id
         id: get_run_id
         run: |
           cd Workflow-CI/MLProject
-          LAST_RUN_ID=$(mlflow runs list --experiment-id 1 --max-results 1 --output json | jq -r '.[0].run_id')
+          LAST_RUN_ID=$(mlflow runs list --experiment-id 1 --max-results 1 --output json | jq -r '. [0].run_id')
           echo "RUN_ID=$LAST_RUN_ID" >> $GITHUB_ENV
           echo "Latest Run ID: $LAST_RUN_ID"
 
-      # 7. Install dependency tambahan (Simulasi agar mirip target)
+      # 8. Install dependency tambahan (Simulasi agar mirip target)
       - name: Install Python dependencies
         run: |
           pip install requests
 
-      # 8. Upload Google Drive (DUMMY / SIMULASI agar Centang Hijau)
+      # 9. Upload Google Drive (DUMMY / SIMULASI agar Centang Hijau)
       - name: Upload to Google Drive
         run: |
           echo "Simulating upload to Google Drive..."
@@ -66,24 +72,24 @@ jobs:
           echo "Uploading model..."
           echo "Upload to Google Drive completed (Success)."
 
-      # 9. Build Docker Image dari Model MLflow
+      # 10. Build Docker Image dari Model MLflow
       - name: Build Docker Model
         run: |
           mlflow models build-docker --model-uri "runs:/${{ env.RUN_ID }}/model" --name "${{ env.DOCKER_USER }}/${{ env.IMAGE_NAME }}:latest"
 
-      # 10. Login ke Docker Hub
+      # 11. Login ke Docker Hub
       - name: Log in to Docker Hub
         uses: docker/login-action@v3
         with:
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
 
-      # 11. Tag Image dengan SHA Commit (Versioning)
+      # 12. Tag Image dengan SHA Commit (Versioning)
       - name: Tag Docker Image
         run: |
           docker tag ${{ env.DOCKER_USER }}/${{ env.IMAGE_NAME }}:latest ${{ env.DOCKER_USER }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
 
-      # 12. Push Image ke Docker Hub
+      # 13. Push Image ke Docker Hub
       - name: Push Docker Image
         run: |
           docker push ${{ env.DOCKER_USER }}/${{ env.IMAGE_NAME }}:latest
