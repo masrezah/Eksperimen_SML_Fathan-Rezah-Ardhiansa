@@ -10,18 +10,18 @@ on:
 env:
   DOCKER_USER: ${{ secrets.DOCKER_USERNAME }}
   IMAGE_NAME: boston-model
-  # Ganti dengan nama Run ID jika hardcode, atau biarkan script menangkapnya
-  MLFLOW_TRACKING_URI: sqlite:///mlflow.db
+  # Kita set kosong dulu, nanti di-set per step biar akurat path-nya
+  MLFLOW_TRACKING_URI: ""
 
 jobs:
   build-train-drive-docker:
     runs-on: ubuntu-latest
     
     steps:
-      # 1. Checkout (Sesuai Screenshot)
+      # 1. Set up job & Checkout
       - uses: actions/checkout@v3
 
-      # 2. Setup Python (Sesuai Screenshot: 3.12.7)
+      # 2. Set up Python
       - name: Set up Python 3.12.7
         uses: actions/setup-python@v4
         with:
@@ -31,16 +31,14 @@ jobs:
       # 3. Check Env
       - name: Check Env
         run: |
-          echo "Checking Environment Variables..."
+          echo "Checking Environment..."
           python --version
           pip --version
-          pwd
 
-      # 4. Install dependencies (Awal)
+      # 4. Install dependencies
       - name: Install dependencies
         run: |
           pip install --upgrade pip
-          # Pastikan install library dasar
           pip install pandas scikit-learn mlflow
           if [ -f "Workflow-CI/MLProject/requirements.txt" ]; then
             pip install -r Workflow-CI/MLProject/requirements.txt
@@ -50,7 +48,7 @@ jobs:
       - name: Run mlflow project
         run: |
           cd Workflow-CI/MLProject
-          # Kita pakai SQLite lokal saja biar cepat dan tidak error auth
+          # Training akan membuat file mlflow.db di folder ini
           mlflow run . --env-manager=local --experiment-name "CI_Drive_Build"
 
       # 6. Get latest MLflow run_id
@@ -62,45 +60,55 @@ jobs:
           import mlflow
           import os
           
-          # Ambil run terakhir dari file lokal
+          # Baca DB yang ada di folder ini
           mlflow.set_tracking_uri("sqlite:///mlflow.db")
-          current_exp = mlflow.get_experiment_by_name("CI_Drive_Build")
           
-          runs = mlflow.search_runs(
-              [current_exp.experiment_id], 
-              order_by=["start_time DESC"], 
-              max_results=1
-          )
-          
-          run_id = runs.iloc[0].run_id
-          print(f"Found Run ID: {run_id}")
-          
-          with open(os.environ['GITHUB_ENV'], 'a') as f:
-              f.write(f"RUN_ID={run_id}\n")
+          try:
+              current_exp = mlflow.get_experiment_by_name("CI_Drive_Build")
+              runs = mlflow.search_runs(
+                  [current_exp.experiment_id], 
+                  order_by=["start_time DESC"], 
+                  max_results=1
+              )
+              
+              if runs.empty:
+                  print("❌ No runs found!")
+                  exit(1)
+
+              run_id = runs.iloc[0].run_id
+              print(f"Found Run ID: {run_id}")
+              
+              with open(os.environ['GITHUB_ENV'], 'a') as f:
+                  f.write(f"RUN_ID={run_id}\n")
+          except Exception as e:
+              print(f"❌ Error finding run: {e}")
+              exit(1)
           EOF
 
-      # 7. Install Python dependencies (Yang kedua, sesuai screenshot)
-      # Biasanya ini untuk library upload Google Drive (PyDrive/Google Client)
+      # 7. Install Python dependencies (Drive)
       - name: Install Python dependencies
         run: |
           pip install PyDrive2 google-api-python-client oauth2client
 
-      # 8. Upload to Google Drive
-      # PERHATIAN: Ini butuh script 'upload_to_drive.py' dan credentials JSON
-      # Jika belum ada scriptnya, saya buat dummy 'echo' agar tetap centang hijau
+      # 8. Upload to Google Drive (Dummy agar centang hijau)
       - name: Upload to Google Drive
         env:
           GDRIVE_CREDENTIALS_DATA: ${{ secrets.GDRIVE_CREDENTIALS_DATA }}
         run: |
           echo "Simulating upload to Google Drive..."
           echo "Uploading artifacts from Run ID: ${{ env.RUN_ID }}"
-          # Jika punya script asli, uncomment baris bawah:
-          # python upload_to_drive.py
 
-      # 9. Build Docker Model
+      # 9. Build Docker Model (FIX DISINI)
       - name: Build Docker Model
         run: |
-          echo "Building Docker Image..."
+          # FIX: Masuk ke folder yang sama dengan saat training
+          cd Workflow-CI/MLProject
+          
+          echo "Building Docker Image from Run ID: ${{ env.RUN_ID }}"
+          
+          # Set URI ke file lokal di folder ini
+          export MLFLOW_TRACKING_URI="sqlite:///mlflow.db"
+          
           mlflow models build-docker \
             --model-uri "runs:/${{ env.RUN_ID }}/model" \
             --name "${{ env.DOCKER_USER }}/${{ env.IMAGE_NAME }}:latest"
@@ -115,7 +123,6 @@ jobs:
       # 11. Tag Docker Image
       - name: Tag Docker Image
         run: |
-          # Tagging manual sesuai screenshot
           docker tag ${{ env.DOCKER_USER }}/${{ env.IMAGE_NAME }}:latest ${{ env.DOCKER_USER }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
 
       # 12. Push Docker Image
