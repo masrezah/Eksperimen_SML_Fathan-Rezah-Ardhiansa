@@ -14,13 +14,23 @@ env:
   MLFLOW_EXPERIMENT_NAME: CI_Docker_Build
   DOCKER_USER: ${{ secrets.DOCKER_USERNAME }}
   IMAGE_NAME: boston-model
+  
+  # =========================================================
+  # FIX UTAMA: KREDENSIAL S3 (Wajib untuk upload DagsHub)
+  # =========================================================
+  # DagsHub menggunakan Token sebagai Access Key & Secret Key
+  AWS_ACCESS_KEY_ID: ${{ secrets.DAGSHUB_TOKEN }}
+  AWS_SECRET_ACCESS_KEY: ${{ secrets.DAGSHUB_TOKEN }}
+  AWS_REGION: us-east-1
+  # Endpoint khusus storage DagsHub
+  MLFLOW_S3_ENDPOINT_URL: https://dagshub.com/api/v1/repo/rezahmas/boston-housing-mlflow/storage
 
 jobs:
   build-train-docker:
     runs-on: ubuntu-latest
     
     steps:
-      # ==================== 1. SETUP & CHECKOUT ====================
+      # ==================== 1. SETUP ====================
       - name: 📥 Checkout repository
         uses: actions/checkout@v4
 
@@ -30,47 +40,35 @@ jobs:
           python-version: "3.12"
           cache: 'pip'
 
-      # ==================== 2. INSTALL DEPENDENCIES ====================
+      # ==================== 2. INSTALL ====================
       - name: 📦 Install dependencies
         run: |
-          echo "Installing Python dependencies..."
           pip install --upgrade pip
-          
-          # Install requirements dari project
           if [ -f "Workflow-CI/MLProject/requirements.txt" ]; then
             pip install -r Workflow-CI/MLProject/requirements.txt
           fi
-          
-          # FIX PENTING: Install library wajib untuk upload ke DagsHub & S3
+          # Wajib boto3 untuk S3 upload
           pip install pandas requests boto3 dagshub mlflow scikit-learn
-          
-          echo "✓ Dependencies installed"
 
-      # ==================== 3. VERIFY DATASET ====================
+      # ==================== 3. VERIFY DATA ====================
       - name: ✅ Verify clean dataset exists
         run: |
           if [ ! -f "Workflow-CI/MLProject/HousingData_clean.csv" ]; then
-            echo "❌ ERROR: File HousingData_clean.csv tidak ditemukan di Workflow-CI/MLProject/"
+            echo "❌ ERROR: HousingData_clean.csv tidak ditemukan!"
             exit 1
           fi
           echo "✓ Dataset found."
 
-      # ==================== 4. TRAINING & UPLOAD ====================
-      - name: 🚀 Train models & Upload to DagsHub
+      # ==================== 4. TRAINING ====================
+      - name: 🚀 Train models & Upload
         run: |
           cd Workflow-CI/MLProject
-          
-          # Jalankan script python langsung agar environment variabel terbaca sempurna
+          # Kita set environment variable khusus di step ini agar MLflow sadar S3
+          export MLFLOW_S3_ENDPOINT_URL="https://dagshub.com/api/v1/repo/rezahmas/boston-housing-mlflow/storage"
           python modelling.py
 
-      # ==================== 5. WAIT FOR SYNC ====================
-      - name: ⏳ Wait for DagsHub S3 sync
-        run: |
-          echo "Waiting 15 seconds for artifacts to appear in S3..."
-          sleep 15
-
-      # ==================== 6. GET RUN ID & VERIFY ARTIFACT ====================
-      - name: 🔍 Get Run ID & Verify 'model' folder
+      # ==================== 5. VERIFY ARTIFACT ====================
+      - name: 🔍 Verify 'model' artifact
         id: get_run_id
         run: |
           cd Workflow-CI/MLProject
@@ -79,103 +77,88 @@ jobs:
           from mlflow.tracking import MlflowClient
           import os
           import sys
+          import time
 
-          try:
-              # Setup
-              mlflow.set_tracking_uri(os.environ['MLFLOW_TRACKING_URI'])
-              client = MlflowClient()
-              exp_name = os.environ['MLFLOW_EXPERIMENT_NAME']
-              
-              print(f"🔍 Searching for experiment: {exp_name}")
-              experiment = mlflow.get_experiment_by_name(exp_name)
-              
-              if not experiment:
-                  print("❌ Experiment not found")
-                  sys.exit(1)
-              
-              # Cari Run Terakhir yang FINISHED
-              runs = mlflow.search_runs(
-                  [experiment.experiment_id], 
-                  filter_string="status='FINISHED'", 
-                  order_by=["start_time DESC"], 
-                  max_results=1
-              )
-              
-              if runs.empty:
-                  print("❌ No FINISHED runs found")
-                  sys.exit(1)
-                  
-              run_id = runs.iloc[0].run_id
-              print(f"🆔 Checking Run ID: {run_id}")
-              
-              # Cek Isi Artefak
-              artifacts = client.list_artifacts(run_id)
-              paths = [a.path for a in artifacts]
-              print(f"📂 Artifacts found: {paths}")
-              
-              if "model" not in paths:
-                  print(f"❌ CRITICAL ERROR: Folder 'model' tidak ditemukan!")
-                  print("   Pastikan modelling.py menggunakan artifact_path='model'")
-                  print("   dan library 'boto3' terinstall.")
-                  sys.exit(1)
-                  
-              print("✅ 'model' artifact verified successfully")
-              
-              # Simpan Run ID ke GitHub Env
-              with open(os.environ['GITHUB_ENV'], 'a') as f:
-                  f.write(f"RUN_ID={run_id}\n")
-
-          except Exception as e:
-              print(f"❌ Fatal Error: {e}")
+          # Setup
+          mlflow.set_tracking_uri(os.environ['MLFLOW_TRACKING_URI'])
+          client = MlflowClient()
+          exp_name = os.environ['MLFLOW_EXPERIMENT_NAME']
+          
+          print(f"🔍 Checking Experiment: {exp_name}")
+          experiment = mlflow.get_experiment_by_name(exp_name)
+          
+          if not experiment:
+              print("❌ Experiment not found")
               sys.exit(1)
+          
+          # Tunggu sebentar (kadang latency S3)
+          time.sleep(5) 
+
+          # Cari Run Terakhir
+          runs = mlflow.search_runs(
+              [experiment.experiment_id], 
+              filter_string="status='FINISHED'", 
+              order_by=["start_time DESC"], 
+              max_results=1
+          )
+          
+          if runs.empty:
+              print("❌ No FINISHED runs found")
+              sys.exit(1)
+              
+          run_id = runs.iloc[0].run_id
+          print(f"🆔 Run ID: {run_id}")
+          
+          # Cek Isi Artefak
+          artifacts = client.list_artifacts(run_id)
+          paths = [a.path for a in artifacts]
+          print(f"📂 Artifacts found: {paths}")
+          
+          if "model" not in paths:
+              print(f"❌ CRITICAL: 'model' folder missing!")
+              print("   Cek apakah AWS_ACCESS_KEY_ID ter-set di secrets.")
+              sys.exit(1)
+              
+          print("✅ Artifact verified.")
+          
+          with open(os.environ['GITHUB_ENV'], 'a') as f:
+              f.write(f"RUN_ID={run_id}\n")
           EOF
 
-      # ==================== 7. BUILD DOCKER IMAGE ====================
+      # ==================== 6. BUILD DOCKER ====================
       - name: 🐳 Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
       - name: 🏗️ Build Docker image
         run: |
-          echo "Building Docker image from Run ID: ${{ env.RUN_ID }}"
-          
+          echo "Building from Run ID: ${{ env.RUN_ID }}"
           mlflow models build-docker \
             --model-uri "runs:/${{ env.RUN_ID }}/model" \
             --name "${{ env.DOCKER_USER }}/${{ env.IMAGE_NAME }}:latest"
 
-      # ==================== 8. TEST CONTAINER ====================
+      # ==================== 7. TEST CONTAINER ====================
       - name: 🧪 Test Docker container
         run: |
-          echo "Starting container for testing..."
           docker run -d -p 8080:8080 --name test-container ${{ env.DOCKER_USER }}/${{ env.IMAGE_NAME }}:latest
+          sleep 20
           
-          echo "Waiting 15s for container initialization..."
-          sleep 15
-          
-          # Health Check
-          echo "Testing Health (/ping)..."
           if ! curl -f http://localhost:8080/ping; then
-             echo "❌ Health check failed!"
              docker logs test-container
              exit 1
           fi
-          echo "✓ Health check passed"
           
-          # Prediction Check
-          echo "Testing Prediction (/invocations)..."
           RESPONSE=$(curl -X POST http://localhost:8080/invocations \
             -H "Content-Type: application/json" \
             -d '{"dataframe_split": {"columns": ["CRIM","ZN","INDUS","CHAS","NOX","RM","AGE","DIS","RAD","TAX","PTRATIO","B","LSTAT"], "data": [[0.00632,18.0,2.31,0.0,0.538,6.575,65.2,4.09,1.0,296.0,15.3,396.9,4.98]]}}')
           
           if [[ "$RESPONSE" == *"["* ]]; then
-             echo "✓ Prediction test passed"
+             echo "✓ Prediction success"
           else
-             echo "❌ Prediction failed or unexpected response: $RESPONSE"
              exit 1
           fi
-
           docker rm -f test-container
 
-      # ==================== 9. PUSH TO REGISTRY ====================
+      # ==================== 8. PUSH ====================
       - name: 🔐 Log in to Docker Hub
         uses: docker/login-action@v3
         with:
@@ -183,5 +166,4 @@ jobs:
           password: ${{ secrets.DOCKER_PASSWORD }}
 
       - name: 📤 Push Docker image
-        run: |
-          docker push ${{ env.DOCKER_USER }}/${{ env.IMAGE_NAME }}:latest
+        run: docker push ${{ env.DOCKER_USER }}/${{ env.IMAGE_NAME }}:latest
