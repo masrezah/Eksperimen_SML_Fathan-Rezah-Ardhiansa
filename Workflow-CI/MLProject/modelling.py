@@ -28,10 +28,11 @@ def load_data(csv_path: str) -> pd.DataFrame:
         
         # Try to find the file in common locations
         possible_paths = [
+            'preprocessing/HousingData.csv',
             'preprocessing/HousingData_clean.csv',
-            '../preprocessing/HousingData_clean.csv',
-            'HousingData_clean.csv',
-            os.path.join(os.path.dirname(__file__), 'preprocessing/HousingData_clean.csv'),
+            '../preprocessing/HousingData.csv',
+            'HousingData.csv',
+            os.path.join(os.path.dirname(__file__), 'preprocessing/HousingData.csv'),
         ]
         
         print("\n🔍 Searching in alternative locations:")
@@ -60,7 +61,7 @@ def load_data(csv_path: str) -> pd.DataFrame:
             
             raise FileNotFoundError(
                 f"Dataset file not found at any of the checked locations. "
-                f"Please ensure 'HousingData_clean.csv' exists in the preprocessing folder."
+                f"Please ensure dataset CSV exists in the preprocessing folder."
             )
     
     # Load dataset
@@ -162,7 +163,7 @@ def main():
     print("="*70)
     
     # Path ke dataset (support environment variable)
-    data_path = os.getenv('DATA_PATH', 'preprocessing/HousingData_clean.csv')
+    data_path = os.getenv('DATA_PATH', 'preprocessing/HousingData.csv')
     print(f"📍 Dataset path: {data_path}")
     
     # Load data dengan error handling

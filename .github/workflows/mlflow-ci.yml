@@ -45,7 +45,7 @@ jobs:
           echo "Installing Python dependencies..."
           pip install --upgrade pip
           pip install -r Workflow-CI/MLProject/requirements.txt
-          pip install requests  # For future Google Drive upload
+          pip install requests
           echo "✓ Dependencies installed"
 
       # ==================== DATASET SETUP ====================
@@ -125,15 +125,15 @@ jobs:
           ls -lah preprocessing/
           
           echo ""
-          echo "Checking for HousingData_clean.csv..."
-          if [ -f "preprocessing/HousingData_clean.csv" ]; then
-            echo "✓ HousingData_clean.csv EXISTS"
-            echo "File size: $(du -h preprocessing/HousingData_clean.csv | cut -f1)"
-            echo "Line count: $(wc -l < preprocessing/HousingData_clean.csv)"
+          echo "Checking for HousingData.csv..."
+          if [ -f "preprocessing/HousingData.csv" ]; then
+            echo "✓ HousingData.csv EXISTS"
+            echo "File size: $(du -h preprocessing/HousingData.csv | cut -f1)"
+            echo "Line count: $(wc -l < preprocessing/HousingData.csv)"
             echo "First few lines:"
-            head -n 3 preprocessing/HousingData_clean.csv
+            head -n 3 preprocessing/HousingData.csv
           else
-            echo "❌ ERROR: HousingData_clean.csv NOT FOUND!"
+            echo "❌ ERROR: HousingData.csv NOT FOUND!"
             echo "Available files in preprocessing:"
             ls -1 preprocessing/
             exit 1
@@ -153,7 +153,7 @@ jobs:
           cd Workflow-CI/MLProject
           
           # Final check before training
-          if [ ! -f "preprocessing/HousingData_clean.csv" ]; then
+          if [ ! -f "preprocessing/HousingData.csv" ]; then
             echo "❌ Dataset missing before training!"
             exit 1
           fi
@@ -321,7 +321,7 @@ jobs:
           
           echo "✓ Health check passed"
           
-          # Test prediction (example - adjust based on your features)
+          # Test prediction
           echo ""
           echo "Testing prediction endpoint..."
           RESPONSE=$(curl -X POST http://localhost:8080/invocations \
