@@ -63,7 +63,7 @@ def train_random_forest(X_train, X_test, y_train, y_test):
 
 def main():
     # 1. Load data preprocessing
-    data_path = "HousingData_clean.csv"
+    data_path = 'preprocessing/HousingData_clean.csv'
     df = load_data(data_path)
 
     # 2. Pisahkan fitur dan target
