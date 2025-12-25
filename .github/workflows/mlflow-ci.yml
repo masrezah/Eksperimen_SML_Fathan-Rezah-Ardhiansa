@@ -69,5 +69,5 @@ jobs:
 
       - name: Push Docker Image
         run: |
-          docker push ${{ env.DOCKER_USER }}/${{ env.IMAGE_NAME }}:latest
-          docker push ${{ env.DOCKER_USER }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
+          docker push ${{ env.DOCKER_USER }}/${{ env.IMAGE_NAME }}:latest  
+          docker push ${{ env.DOCKER_USER }}/${{ env.IMAGE_NAME }}:${{ github.sha }}    
