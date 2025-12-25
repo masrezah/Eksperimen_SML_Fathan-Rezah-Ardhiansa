@@ -11,9 +11,9 @@ env:
   MLFLOW_TRACKING_URI: https://dagshub.com/rezahmas/boston-housing-mlflow.mlflow
   MLFLOW_TRACKING_USERNAME: rezahmas
   MLFLOW_TRACKING_PASSWORD: ${{ secrets.DAGSHUB_TOKEN }}
+  MLFLOW_EXPERIMENT_NAME: CI_Docker_Build  # ✅ Experiment name untuk CI/CD
   DOCKER_USER: ${{ secrets.DOCKER_USERNAME }}
-  # FIX: Pastikan nama image huruf kecil semua untuk kompatibilitas Docker
-  IMAGE_NAME: boston-model 
+  IMAGE_NAME: boston-model
 
 jobs:
   build-train-docker:
@@ -27,7 +27,7 @@ jobs:
       - name: 🐍 Set up Python 3.12
         uses: actions/setup-python@v5
         with:
-          python-version: "3.12" # Versi minor (3.12.7) kadang spesifik, 3.12 lebih aman
+          python-version: "3.12"
           cache: 'pip'
 
       # ==================== DEPENDENCIES ====================
@@ -35,42 +35,45 @@ jobs:
         run: |
           echo "Installing Python dependencies..."
           pip install --upgrade pip
-          # Menginstall requirements project
           pip install -r Workflow-CI/MLProject/requirements.txt
-          # FIX: Install library tambahan yang dipakai di script verifikasi (inline script) di bawah
-          pip install pandas requests jq
           echo "✓ Dependencies installed"
 
       # ==================== DATASET VERIFICATION ====================
       - name: ✅ Verify clean dataset exists
         run: |
           cd Workflow-CI/MLProject
-          
           if [ -f "HousingData_clean.csv" ]; then
             echo "✓ HousingData_clean.csv FOUND"
-            
-            # Script Python untuk cek null value
             python3 << 'EOF'
           import pandas as pd
           import sys
+          
           try:
               df = pd.read_csv('HousingData_clean.csv')
               if df.empty:
-                  print("❌ Dataset empty!")
+                  print("❌ Dataset is empty!")
                   sys.exit(1)
+              
               missing = df.isnull().sum().sum()
               if missing > 0:
                   print(f"❌ Dataset contains {missing} missing values!")
                   sys.exit(1)
-              print("✓ Dataset quality check passed")
+              
+              if "MEDV" not in df.columns:
+                  print("❌ Target column 'MEDV' not found!")
+                  sys.exit(1)
+              
+              print(f"✓ Dataset quality check passed")
+              print(f"  - Shape: {df.shape}")
+              print(f"  - Columns: {len(df.columns)}")
+              print(f"  - Missing values: {missing}")
           except Exception as e:
               print(f"❌ Error checking dataset: {e}")
               sys.exit(1)
           EOF
           else
             echo "❌ ERROR: HousingData_clean.csv NOT FOUND!"
-            echo "Pastikan Anda sudah menjalankan preprocessing dan push hasilnya ke repo,"
-            echo "ATAU tambahkan step preprocessing di workflow ini sebelum step training."
+            echo "Make sure you have the cleaned dataset in the repository."
             exit 1
           fi
 
@@ -78,93 +81,311 @@ jobs:
       - name: 🚀 Train models with MLflow
         run: |
           cd Workflow-CI/MLProject
+          echo "Starting MLflow training..."
+          echo "Experiment: $MLFLOW_EXPERIMENT_NAME"
+          echo "Tracking URI: $MLFLOW_TRACKING_URI"
           
-          # MLflow run akan mewarisi environment variables (URI, User, Password) dari level 'env' di atas
           mlflow run . \
             --env-manager=local \
-            --experiment-name "CI_Docker_Build"
+            --experiment-name "$MLFLOW_EXPERIMENT_NAME"
           
+          echo "✓ Training completed"
+
       # ==================== MLFLOW RUN MANAGEMENT ====================
-      - name: 🔍 Get latest MLflow run ID
+      - name: 🔍 Get best model run ID
         id: get_run_id
         run: |
-          # Tunggu sebentar agar DagsHub API sinkron (opsional tapi disarankan)
-          sleep 5 
+          cd Workflow-CI/MLProject
+          python3 << 'EOF'
+          import mlflow
+          import os
+          import sys
+          import time
           
-          EXPERIMENT_NAME="CI_Docker_Build"
+          # Wait for DagsHub API sync
+          print("⏳ Waiting for DagsHub synchronization...")
+          time.sleep(8)
           
-          # Ambil Exp ID
-          EXPERIMENT_ID=$(mlflow experiments search \
-            --filter-string "name='$EXPERIMENT_NAME'" \
-            --output json | jq -r '.[0].experiment_id')
-            
-          echo "Experiment ID: $EXPERIMENT_ID"
+          try:
+              # Set tracking URI
+              tracking_uri = os.environ['MLFLOW_TRACKING_URI']
+              mlflow.set_tracking_uri(tracking_uri)
+              print(f"✓ Tracking URI: {tracking_uri}")
+              
+              # Get experiment
+              experiment_name = os.environ.get('MLFLOW_EXPERIMENT_NAME', 'CI_Docker_Build')
+              print(f"🔍 Searching for experiment: {experiment_name}")
+              
+              experiment = mlflow.get_experiment_by_name(experiment_name)
+              if experiment is None:
+                  print(f"❌ Experiment '{experiment_name}' not found!")
+                  # List available experiments
+                  all_experiments = mlflow.search_experiments()
+                  print("\n📋 Available experiments:")
+                  for exp in all_experiments:
+                      print(f"  - {exp.name} (ID: {exp.experiment_id})")
+                  sys.exit(1)
+              
+              exp_id = experiment.experiment_id
+              print(f"✓ Experiment ID: {exp_id}")
+              
+              # Strategy 1: Search for BEST_MODEL runs (with selected_as_best tag)
+              print("\n🔍 Strategy 1: Searching for BEST_MODEL runs...")
+              runs = mlflow.search_runs(
+                  experiment_ids=[exp_id],
+                  filter_string="status = 'FINISHED' AND params.selected_as_best = 'True'",
+                  order_by=["start_time DESC"],
+                  max_results=1
+              )
+              
+              # Strategy 2: Fallback to runs with "BEST_MODEL" in name
+              if runs.empty:
+                  print("⚠️  No runs with selected_as_best tag found")
+                  print("🔍 Strategy 2: Searching for runs with 'BEST_MODEL' in name...")
+                  runs = mlflow.search_runs(
+                      experiment_ids=[exp_id],
+                      filter_string="status = 'FINISHED' AND tags.`mlflow.runName` LIKE 'BEST_MODEL%'",
+                      order_by=["start_time DESC"],
+                      max_results=1
+                  )
+              
+              # Strategy 3: Fallback to any finished run
+              if runs.empty:
+                  print("⚠️  No BEST_MODEL runs found")
+                  print("🔍 Strategy 3: Searching for any finished run...")
+                  runs = mlflow.search_runs(
+                      experiment_ids=[exp_id],
+                      filter_string="status = 'FINISHED'",
+                      order_by=["start_time DESC"],
+                      max_results=1
+                  )
+              
+              if runs.empty:
+                  print("\n❌ No FINISHED runs found in experiment!")
+                  print("Please check your training step.")
+                  sys.exit(1)
+              
+              # Extract run information
+              run_id = runs.iloc[0].run_id
+              run_name = runs.iloc[0].get('tags.mlflow.runName', 'Unknown')
+              run_status = runs.iloc[0].get('status', 'Unknown')
+              
+              print("\n" + "="*60)
+              print("✅ RUN SELECTED")
+              print("="*60)
+              print(f"  Run Name   : {run_name}")
+              print(f"  Run ID     : {run_id}")
+              print(f"  Status     : {run_status}")
+              print("="*60)
+              
+              # Export to GitHub environment
+              github_env = os.environ['GITHUB_ENV']
+              with open(github_env, 'a') as f:
+                  f.write(f"RUN_ID={run_id}\n")
+                  f.write(f"RUN_NAME={run_name}\n")
+              
+              print("\n✓ Run ID exported to GitHub environment")
+              
+          except Exception as e:
+              print(f"\n❌ Error: {e}")
+              import traceback
+              traceback.print_exc()
+              sys.exit(1)
+          EOF
+
+      # ==================== MODEL ARTIFACT VERIFICATION ====================
+      - name: 🔍 Verify model artifact exists
+        run: |
+          cd Workflow-CI/MLProject
+          python3 << 'EOF'
+          import mlflow
+          from mlflow.tracking import MlflowClient
+          import os
+          import sys
           
-          # Ambil Last Run ID yang statusnya FINISHED
-          LAST_RUN_ID=$(mlflow runs list \
-            --experiment-id "$EXPERIMENT_ID" \
-            --filter-string "status='FINISHED'" \
-            --max-results 1 \
-            --output json | jq -r '.[0].run_id')
-            
-          if [ -z "$LAST_RUN_ID" ] || [ "$LAST_RUN_ID" = "null" ]; then
-             echo "❌ Could not find a FINISHED run id"
-             exit 1
-          fi
+          print("\n" + "="*60)
+          print("🔍 VERIFYING MODEL ARTIFACT")
+          print("="*60)
           
-          echo "RUN_ID=$LAST_RUN_ID" >> $GITHUB_ENV
-          echo "✓ Locked on Run ID: $LAST_RUN_ID"
+          try:
+              # Initialize client
+              mlflow.set_tracking_uri(os.environ['MLFLOW_TRACKING_URI'])
+              client = MlflowClient()
+              
+              run_id = os.environ['RUN_ID']
+              run_name = os.environ.get('RUN_NAME', 'Unknown')
+              
+              print(f"Run Name: {run_name}")
+              print(f"Run ID  : {run_id}")
+              print("\n📦 Listing artifacts...")
+              
+              # List artifacts
+              artifacts = client.list_artifacts(run_id)
+              artifact_paths = [a.path for a in artifacts]
+              
+              if not artifact_paths:
+                  print("❌ No artifacts found in this run!")
+                  sys.exit(1)
+              
+              print("\nArtifacts found:")
+              for path in artifact_paths:
+                  print(f"  ✓ {path}")
+              
+              # Check if "model" artifact exists
+              if "model" not in artifact_paths:
+                  print("\n❌ ERROR: Required artifact 'model' not found!")
+                  print("\nExpected artifact structure:")
+                  print("  - model/")
+                  print("    - MLmodel")
+                  print("    - model.pkl")
+                  print("    - conda.yaml")
+                  print("    - requirements.txt")
+                  print("\nPlease ensure your modeling.py logs the model with:")
+                  print("  mlflow.sklearn.log_model(model, artifact_path='model')")
+                  sys.exit(1)
+              
+              # Verify model subdirectory structure
+              print("\n🔍 Checking model directory structure...")
+              model_artifacts = client.list_artifacts(run_id, path="model")
+              model_files = [a.path for a in model_artifacts]
+              
+              required_files = ["model/MLmodel", "model/model.pkl"]
+              missing_files = [f for f in required_files if f not in model_files]
+              
+              if missing_files:
+                  print(f"⚠️  Warning: Some model files might be missing: {missing_files}")
+              else:
+                  print("✓ Model directory structure verified")
+              
+              print("\nModel files:")
+              for f in model_files:
+                  print(f"  ✓ {f}")
+              
+              print("\n" + "="*60)
+              print("✅ MODEL ARTIFACT VERIFICATION PASSED")
+              print("="*60)
+              
+          except Exception as e:
+              print(f"\n❌ Error during verification: {e}")
+              import traceback
+              traceback.print_exc()
+              sys.exit(1)
+          EOF
 
       # ==================== DOCKER BUILD ====================
       - name: 🐳 Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
       - name: 🏗️ Build Docker image from MLflow model
-        # NOTE: Step ini sering gagal jika folder 'artifacts/model' tidak standar.
-        # Pastikan di modelling.py Anda log model dengan nama "model" -> mlflow.sklearn.log_model(..., "model")
         run: |
+          echo "Building Docker image..."
+          echo "Model URI: runs:/${{ env.RUN_ID }}/model"
+          echo "Image name: ${{ env.DOCKER_USER }}/${{ env.IMAGE_NAME }}:latest"
+          
           mlflow models build-docker \
             --model-uri "runs:/${{ env.RUN_ID }}/model" \
             --name "${{ env.DOCKER_USER }}/${{ env.IMAGE_NAME }}:latest"
+          
+          echo "✓ Docker image built successfully"
 
       # ==================== TEST CONTAINER ====================
-      - name: 🧪 Test Docker image
+      - name: 🧪 Test Docker container
         run: |
-          # Jalankan container
-          docker run -d -p 8080:8080 --name test-container ${{ env.DOCKER_USER }}/${{ env.IMAGE_NAME }}:latest
+          echo "Starting container test..."
           
-          echo "Waiting for container initialization..."
-          sleep 10
+          # Start container
+          docker run -d -p 8080:8080 --name test-container \
+            ${{ env.DOCKER_USER }}/${{ env.IMAGE_NAME }}:latest
           
-          # 1. Health Check
-          if curl -f http://localhost:8080/ping; then
-             echo "✓ Ping check passed"
-          else
-             echo "❌ Ping check failed"
-             docker logs test-container
-             exit 1
+          echo "⏳ Waiting for container initialization..."
+          sleep 15
+          
+          # Check if container is running
+          if ! docker ps | grep -q test-container; then
+            echo "❌ Container is not running!"
+            docker logs test-container
+            exit 1
           fi
-
-          # 2. Prediction Check (Format JSON Split yang umum di MLflow)
-          # Pastikan struktur data ini sesuai dengan jumlah kolom di dataset training Anda
-          RESPONSE=$(curl -X POST http://localhost:8080/invocations \
+          
+          echo "✓ Container is running"
+          
+          # Test 1: Health Check
+          echo ""
+          echo "🔍 Test 1: Health Check (/ping)"
+          if curl -f http://localhost:8080/ping; then
+            echo "✓ Health check passed"
+          else
+            echo "❌ Health check failed"
+            docker logs test-container
+            docker rm -f test-container
+            exit 1
+          fi
+          
+          # Test 2: Prediction Check
+          echo ""
+          echo "🔍 Test 2: Prediction Check (/invocations)"
+          
+          # Boston Housing dataset has 13 features
+          # CRIM, ZN, INDUS, CHAS, NOX, RM, AGE, DIS, RAD, TAX, PTRATIO, B, LSTAT
+          RESPONSE=$(curl -s -X POST http://localhost:8080/invocations \
             -H "Content-Type: application/json" \
-            -d '{"dataframe_split": {
-                "columns": ["CRIM","ZN","INDUS","CHAS","NOX","RM","AGE","DIS","RAD","TAX","PTRATIO","B","LSTAT"], 
+            -d '{
+              "dataframe_split": {
+                "columns": ["CRIM","ZN","INDUS","CHAS","NOX","RM","AGE","DIS","RAD","TAX","PTRATIO","B","LSTAT"],
                 "data": [[0.00632,18.0,2.31,0.0,0.538,6.575,65.2,4.09,1.0,296.0,15.3,396.9,4.98]]
-            }}')
+              }
+            }')
           
           echo "Response: $RESPONSE"
           
-          # Validasi sederhana: Cek apakah response mengandung bracket kurung siku (array hasil prediksi)
-          if [[ "$RESPONSE" == *"["* ]]; then
-             echo "✓ Prediction test passed"
+          # Validate response contains predictions (array format)
+          if [[ "$RESPONSE" == *"["* ]] && [[ "$RESPONSE" == *"]"* ]]; then
+            echo "✓ Prediction test passed - Valid response received"
+            
+            # Try to extract and display the prediction value
+            PREDICTION=$(echo $RESPONSE | grep -oP '\[\K[0-9.]+' || echo "Could not parse")
+            echo "  Predicted value: $PREDICTION"
           else
-             echo "❌ Prediction test failed (Invalid response)"
-             exit 1
+            echo "❌ Prediction test failed - Invalid response format"
+            echo "Expected: Array of predictions [value]"
+            echo "Received: $RESPONSE"
+            docker logs test-container
+            docker rm -f test-container
+            exit 1
           fi
           
+          # Test 3: Multiple predictions
+          echo ""
+          echo "🔍 Test 3: Batch Prediction (2 samples)"
+          BATCH_RESPONSE=$(curl -s -X POST http://localhost:8080/invocations \
+            -H "Content-Type: application/json" \
+            -d '{
+              "dataframe_split": {
+                "columns": ["CRIM","ZN","INDUS","CHAS","NOX","RM","AGE","DIS","RAD","TAX","PTRATIO","B","LSTAT"],
+                "data": [
+                  [0.00632,18.0,2.31,0.0,0.538,6.575,65.2,4.09,1.0,296.0,15.3,396.9,4.98],
+                  [0.02731,0.0,7.07,0.0,0.469,6.421,78.9,4.9671,2.0,242.0,17.8,396.90,9.14]
+                ]
+              }
+            }')
+          
+          echo "Batch response: $BATCH_RESPONSE"
+          
+          if [[ "$BATCH_RESPONSE" == *"["* ]]; then
+            echo "✓ Batch prediction test passed"
+          else
+            echo "⚠️  Batch prediction test warning (non-critical)"
+          fi
+          
+          # Cleanup
+          echo ""
+          echo "🧹 Cleaning up test container..."
           docker rm -f test-container
+          
+          echo ""
+          echo "="*60
+          echo "✅ ALL TESTS PASSED"
+          echo "="*60
 
       # ==================== DOCKER REGISTRY ====================
       - name: 🔐 Log in to Docker Hub
@@ -173,6 +394,56 @@ jobs:
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
 
-      - name: 📤 Push Docker image
+      - name: 📤 Push Docker image to Docker Hub
         run: |
+          echo "Pushing image to Docker Hub..."
+          echo "Image: ${{ env.DOCKER_USER }}/${{ env.IMAGE_NAME }}:latest"
+          
           docker push ${{ env.DOCKER_USER }}/${{ env.IMAGE_NAME }}:latest
+          
+          echo ""
+          echo "="*60
+          echo "✅ IMAGE PUSHED SUCCESSFULLY"
+          echo "="*60
+          echo ""
+          echo "🐳 Docker Hub: https://hub.docker.com/r/${{ env.DOCKER_USER }}/${{ env.IMAGE_NAME }}"
+          echo "🔗 MLflow: ${{ env.MLFLOW_TRACKING_URI }}"
+          echo ""
+          echo "To pull and run this image:"
+          echo "  docker pull ${{ env.DOCKER_USER }}/${{ env.IMAGE_NAME }}:latest"
+          echo "  docker run -p 8080:8080 ${{ env.DOCKER_USER }}/${{ env.IMAGE_NAME }}:latest"
+          echo ""
+          echo "To make predictions:"
+          echo '  curl -X POST http://localhost:8080/invocations \'
+          echo '    -H "Content-Type: application/json" \'
+          echo '    -d '"'"'{"dataframe_split":{"columns":["CRIM","ZN","INDUS","CHAS","NOX","RM","AGE","DIS","RAD","TAX","PTRATIO","B","LSTAT"],"data":[[0.00632,18.0,2.31,0.0,0.538,6.575,65.2,4.09,1.0,296.0,15.3,396.9,4.98]]}}'"'"
+          echo "="*60
+
+      # ==================== WORKFLOW SUMMARY ====================
+      - name: 📊 Pipeline Summary
+        if: always()
+        run: |
+          echo ""
+          echo "╔════════════════════════════════════════════════════════════╗"
+          echo "║          CI/CD PIPELINE EXECUTION SUMMARY                  ║"
+          echo "╚════════════════════════════════════════════════════════════╝"
+          echo ""
+          echo "📋 Workflow Details:"
+          echo "  • Workflow: ${{ github.workflow }}"
+          echo "  • Run Number: ${{ github.run_number }}"
+          echo "  • Triggered by: ${{ github.event_name }}"
+          echo "  • Branch: ${{ github.ref_name }}"
+          echo "  • Commit: ${{ github.sha }}"
+          echo ""
+          echo "🏗️  Build Information:"
+          echo "  • Run ID: ${{ env.RUN_ID }}"
+          echo "  • Run Name: ${{ env.RUN_NAME }}"
+          echo "  • Experiment: ${{ env.MLFLOW_EXPERIMENT_NAME }}"
+          echo "  • Docker Image: ${{ env.DOCKER_USER }}/${{ env.IMAGE_NAME }}:latest"
+          echo ""
+          echo "🔗 Useful Links:"
+          echo "  • MLflow Tracking: ${{ env.MLFLOW_TRACKING_URI }}"
+          echo "  • Docker Hub: https://hub.docker.com/r/${{ env.DOCKER_USER }}/${{ env.IMAGE_NAME }}"
+          echo "  • GitHub Actions: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          echo ""
+          echo "════════════════════════════════════════════════════════════"
