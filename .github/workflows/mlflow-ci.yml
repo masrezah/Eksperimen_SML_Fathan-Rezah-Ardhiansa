@@ -8,9 +8,8 @@ on:
   workflow_dispatch:
 
 env:
-  DOCKER_USER: ${{ secrets.DOCKER_USERNAME }}
+  # Kita tidak pakai env global untuk user, tapi kita ambil langsung di step agar bisa dibersihkan
   IMAGE_NAME: boston-model
-  # Kita set kosong dulu, nanti di-set per step biar akurat path-nya
   MLFLOW_TRACKING_URI: ""
 
 jobs:
@@ -48,7 +47,6 @@ jobs:
       - name: Run mlflow project
         run: |
           cd Workflow-CI/MLProject
-          # Training akan membuat file mlflow.db di folder ini
           mlflow run . --env-manager=local --experiment-name "CI_Drive_Build"
 
       # 6. Get latest MLflow run_id
@@ -60,7 +58,6 @@ jobs:
           import mlflow
           import os
           
-          # Baca DB yang ada di folder ini
           mlflow.set_tracking_uri("sqlite:///mlflow.db")
           
           try:
@@ -90,28 +87,28 @@ jobs:
         run: |
           pip install PyDrive2 google-api-python-client oauth2client
 
-      # 8. Upload to Google Drive (Dummy agar centang hijau)
+      # 8. Upload to Google Drive (Dummy)
       - name: Upload to Google Drive
-        env:
-          GDRIVE_CREDENTIALS_DATA: ${{ secrets.GDRIVE_CREDENTIALS_DATA }}
         run: |
           echo "Simulating upload to Google Drive..."
           echo "Uploading artifacts from Run ID: ${{ env.RUN_ID }}"
 
-      # 9. Build Docker Model (FIX DISINI)
+      # 9. Build Docker Model (FIXED: Cleaning Username)
       - name: Build Docker Model
+        env:
+          RAW_USER: ${{ secrets.DOCKER_USERNAME }}
         run: |
-          # FIX: Masuk ke folder yang sama dengan saat training
           cd Workflow-CI/MLProject
           
-          echo "Building Docker Image from Run ID: ${{ env.RUN_ID }}"
+          # FIX: Hapus spasi/enter dari username
+          CLEAN_USER=$(echo "$RAW_USER" | tr -d '\n' | tr -d '\r' | xargs)
+          echo "Building for user: $CLEAN_USER"
           
-          # Set URI ke file lokal di folder ini
           export MLFLOW_TRACKING_URI="sqlite:///mlflow.db"
           
           mlflow models build-docker \
             --model-uri "runs:/${{ env.RUN_ID }}/model" \
-            --name "${{ env.DOCKER_USER }}/${{ env.IMAGE_NAME }}:latest"
+            --name "${CLEAN_USER}/${{ env.IMAGE_NAME }}:latest"
 
       # 10. Log in to Docker Hub
       - name: Log in to Docker Hub
@@ -122,11 +119,19 @@ jobs:
 
       # 11. Tag Docker Image
       - name: Tag Docker Image
+        env:
+          RAW_USER: ${{ secrets.DOCKER_USERNAME }}
         run: |
-          docker tag ${{ env.DOCKER_USER }}/${{ env.IMAGE_NAME }}:latest ${{ env.DOCKER_USER }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
+          CLEAN_USER=$(echo "$RAW_USER" | tr -d '\n' | tr -d '\r' | xargs)
+          
+          docker tag ${CLEAN_USER}/${{ env.IMAGE_NAME }}:latest ${CLEAN_USER}/${{ env.IMAGE_NAME }}:${{ github.sha }}
 
       # 12. Push Docker Image
       - name: Push Docker Image
+        env:
+          RAW_USER: ${{ secrets.DOCKER_USERNAME }}
         run: |
-          docker push ${{ env.DOCKER_USER }}/${{ env.IMAGE_NAME }}:latest
-          docker push ${{ env.DOCKER_USER }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
+          CLEAN_USER=$(echo "$RAW_USER" | tr -d '\n' | tr -d '\r' | xargs)
+          
+          docker push ${CLEAN_USER}/${{ env.IMAGE_NAME }}:latest
+          docker push ${CLEAN_USER}/${{ env.IMAGE_NAME }}:${{ github.sha }}
