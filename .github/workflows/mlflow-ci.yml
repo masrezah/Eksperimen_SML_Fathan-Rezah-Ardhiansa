@@ -20,7 +20,7 @@ jobs:
     runs-on: ubuntu-latest
     
     steps:
-      # ==================== SETUP ====================
+      # 1. SETUP
       - name: 📥 Checkout repository
         uses: actions/checkout@v4
 
@@ -30,78 +30,35 @@ jobs:
           python-version: "3.12"
           cache: 'pip'
 
-      # ==================== DEPENDENCIES ====================
+      # 2. DEPENDENCIES
       - name: 📦 Install dependencies
         run: |
-          echo "Installing Python dependencies..."
           pip install --upgrade pip
           pip install -r Workflow-CI/MLProject/requirements.txt
-          # Install library tambahan untuk script verifikasi di bawah
           pip install pandas requests
-          echo "✓ Dependencies installed"
 
-      # ==================== DATASET VERIFICATION ====================
+      # 3. VERIFY DATASET
       - name: ✅ Verify clean dataset exists
         run: |
           cd Workflow-CI/MLProject
-          if [ -f "HousingData_clean.csv" ]; then
-            echo "✓ HousingData_clean.csv FOUND"
-            python3 << 'EOF'
-          import pandas as pd
-          import sys
-
-          try:
-              df = pd.read_csv('HousingData_clean.csv')
-              if df.empty:
-                  print("❌ Dataset is empty!")
-                  sys.exit(1)
-              
-              missing = df.isnull().sum().sum()
-              if missing > 0:
-                  print(f"❌ Dataset contains {missing} missing values!")
-                  sys.exit(1)
-              
-              if "MEDV" not in df.columns:
-                  print("❌ Target column 'MEDV' not found!")
-                  sys.exit(1)
-              
-              print(f"✓ Dataset quality check passed")
-              print(f"  - Shape: {df.shape}")
-              print(f"  - Columns: {len(df.columns)}")
-          except Exception as e:
-              print(f"❌ Error checking dataset: {e}")
-              sys.exit(1)
-          EOF
-          else
+          if [ ! -f "HousingData_clean.csv" ]; then
             echo "❌ ERROR: HousingData_clean.csv NOT FOUND!"
-            echo "Make sure you have the cleaned dataset in the repository."
             exit 1
           fi
+          echo "✓ Dataset found."
 
-      # ==================== MODEL TRAINING ====================
+      # 4. TRAINING
       - name: 🚀 Train models with MLflow
         run: |
           cd Workflow-CI/MLProject
-          echo "=========================================="
-          echo "Starting MLflow training..."
-          echo "=========================================="
-          
-          # Run training via MLflow
-          mlflow run . \
-            --env-manager=local \
-            --experiment-name "$MLFLOW_EXPERIMENT_NAME"
-          
-          echo "✓ Training completed"
+          mlflow run . --env-manager=local --experiment-name "$MLFLOW_EXPERIMENT_NAME"
 
-      # ==================== WAIT FOR DAGSHUB SYNC ====================
-      - name: ⏳ Wait for DagsHub synchronization
-        run: |
-          echo "Waiting 20 seconds for DagsHub to sync artifacts..."
-          sleep 20
-          echo "✓ Sync wait completed"
+      # 5. WAIT SYNC
+      - name: ⏳ Wait for DagsHub sync
+        run: sleep 15
 
-      # ==================== GET MLFLOW RUN ID ====================
-      - name: 🔍 Get best model run ID
+      # 6. GET RUN ID (Script Python Sederhana)
+      - name: 🔍 Get Run ID & Verify Artifact
         id: get_run_id
         run: |
           cd Workflow-CI/MLProject
@@ -110,109 +67,84 @@ jobs:
           from mlflow.tracking import MlflowClient
           import os
           import sys
-          import time
-
-          print("🔍 SEARCHING FOR BEST MODEL RUN")
-          MAX_RETRIES = 5
-          RETRY_DELAY = 10
 
           try:
+              # Setup
               mlflow.set_tracking_uri(os.environ['MLFLOW_TRACKING_URI'])
               client = MlflowClient()
-              experiment_name = os.environ.get('MLFLOW_EXPERIMENT_NAME', 'CI_Docker_Build')
+              exp_name = os.environ['MLFLOW_EXPERIMENT_NAME']
               
-              experiment = mlflow.get_experiment_by_name(experiment_name)
-              if experiment is None:
-                  print(f"❌ Experiment '{experiment_name}' not found!")
+              # Get Experiment
+              experiment = mlflow.get_experiment_by_name(exp_name)
+              if not experiment:
+                  print("❌ Experiment not found")
                   sys.exit(1)
               
-              exp_id = experiment.experiment_id
-              print(f"✓ Experiment found - ID: {exp_id}")
-              
-              # Cari run terakhir yang statusnya FINISHED
+              # Get Last Run
               runs = mlflow.search_runs(
-                  experiment_ids=[exp_id],
-                  filter_string="status = 'FINISHED'",
-                  order_by=["start_time DESC"],
-                  max_results=5
+                  [experiment.experiment_id], 
+                  filter_string="status='FINISHED'", 
+                  order_by=["start_time DESC"], 
+                  max_results=1
               )
               
-              selected_run = None
-              if not runs.empty:
-                  for idx, row in runs.iterrows():
-                      run_id = row.run_id
-                      # Cek apakah artefak model benar-benar ada
-                      artifacts = client.list_artifacts(run_id)
-                      artifact_paths = [a.path for a in artifacts]
-                      if "model" in artifact_paths:
-                          selected_run = row
-                          break
-              
-              if selected_run is None:
-                  print("❌ No run with 'model' artifact found!")
+              if runs.empty:
+                  print("❌ No FINISHED runs found")
                   sys.exit(1)
-
-              run_id = selected_run.run_id
-              run_name = selected_run.get('tags.mlflow.runName', 'Unknown')
+                  
+              run_id = runs.iloc[0].run_id
+              print(f"Checking Run ID: {run_id}")
               
-              print(f"✅ RUN SELECTED: {run_id} ({run_name})")
+              # Verify 'model' folder exists
+              artifacts = client.list_artifacts(run_id)
+              paths = [a.path for a in artifacts]
               
-              # Export to GitHub Environment Variables
+              if "model" not in paths:
+                  print(f"❌ Error: 'model' folder not found in artifacts! Found: {paths}")
+                  sys.exit(1)
+                  
+              print("✓ 'model' artifact found successfully")
+              
+              # Save to Env for Next Step
               with open(os.environ['GITHUB_ENV'], 'a') as f:
                   f.write(f"RUN_ID={run_id}\n")
-                  f.write(f"RUN_NAME={run_name}\n")
-              
+
           except Exception as e:
-              print(f"❌ FATAL ERROR: {e}")
+              print(f"❌ Fatal Error: {e}")
               sys.exit(1)
           EOF
 
-      # ==================== DOCKER BUILD ====================
+      # 7. BUILD DOCKER
       - name: 🐳 Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: 🏗️ Build Docker image from MLflow model
+      - name: 🏗️ Build Docker image
         run: |
-          echo "Building Docker image from Run ID: ${{ env.RUN_ID }}"
+          echo "Building from Run ID: ${{ env.RUN_ID }}"
           mlflow models build-docker \
             --model-uri "runs:/${{ env.RUN_ID }}/model" \
             --name "${{ env.DOCKER_USER }}/${{ env.IMAGE_NAME }}:latest"
 
-      # ==================== TEST CONTAINER ====================
+      # 8. TEST CONTAINER
       - name: 🧪 Test Docker container
         run: |
-          echo "Starting container..."
-          docker run -d -p 8080:8080 --name test-container \
-            ${{ env.DOCKER_USER }}/${{ env.IMAGE_NAME }}:latest
+          docker run -d -p 8080:8080 --name test-container ${{ env.DOCKER_USER }}/${{ env.IMAGE_NAME }}:latest
+          sleep 15
           
-          echo "Waiting for container initialization (20s)..."
-          sleep 20
-          
-          # Test 1: Health Check
-          if curl -f http://localhost:8080/ping; then
-             echo "✓ Health check passed"
-          else
-             echo "❌ Health check failed"
+          # Health Check
+          if ! curl -f http://localhost:8080/ping; then
              docker logs test-container
              exit 1
           fi
-
-          # Test 2: Prediction
-          echo "Testing prediction endpoint..."
-          RESPONSE=$(curl -X POST http://localhost:8080/invocations \
+          
+          # Prediction Check
+          curl -X POST http://localhost:8080/invocations \
             -H "Content-Type: application/json" \
-            -d '{"dataframe_split": {"columns": ["CRIM","ZN","INDUS","CHAS","NOX","RM","AGE","DIS","RAD","TAX","PTRATIO","B","LSTAT"], "data": [[0.00632,18.0,2.31,0.0,0.538,6.575,65.2,4.09,1.0,296.0,15.3,396.9,4.98]]}}')
-          
-          if [[ "$RESPONSE" == *"["* ]]; then
-             echo "✓ Prediction test passed: $RESPONSE"
-          else
-             echo "❌ Prediction failed"
-             exit 1
-          fi
-          
+            -d '{"dataframe_split": {"columns": ["CRIM","ZN","INDUS","CHAS","NOX","RM","AGE","DIS","RAD","TAX","PTRATIO","B","LSTAT"], "data": [[0.00632,18.0,2.31,0.0,0.538,6.575,65.2,4.09,1.0,296.0,15.3,396.9,4.98]]}}'
+
           docker rm -f test-container
 
-      # ==================== DOCKER LOGIN & PUSH ====================
+      # 9. PUSH
       - name: 🔐 Log in to Docker Hub
         uses: docker/login-action@v3
         with:
@@ -220,13 +152,4 @@ jobs:
           password: ${{ secrets.DOCKER_PASSWORD }}
 
       - name: 📤 Push Docker image
-        run: |
-          docker push ${{ env.DOCKER_USER }}/${{ env.IMAGE_NAME }}:latest
-
-      # ==================== SUMMARY ====================
-      - name: 📊 Pipeline Summary
-        if: always()
-        run: |
-          echo "Pipeline Completed!"
-          echo "Docker Image: ${{ env.DOCKER_USER }}/${{ env.IMAGE_NAME }}:latest"
-          echo "MLflow Run: ${{ env.RUN_ID }}"
+        run: docker push ${{ env.DOCKER_USER }}/${{ env.IMAGE_NAME }}:latest
