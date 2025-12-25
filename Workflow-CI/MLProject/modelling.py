@@ -48,9 +48,6 @@ def load_data(csv_path: str) -> pd.DataFrame:
     missing_count = df.isnull().sum().sum()
     if missing_count > 0:
         print(f"⚠️  Warning: Dataset contains {missing_count} missing values")
-        missing_per_col = df.isnull().sum()
-        for col, count in missing_per_col[missing_per_col > 0].items():
-            print(f"  - {col}: {count} ({count/len(df)*100:.1f}%)")
         raise ValueError("Dataset contains missing values! Use cleaned dataset.")
     else:
         print("✓ Dataset is clean - no missing values")
@@ -63,10 +60,10 @@ def load_data(csv_path: str) -> pd.DataFrame:
     return df
 
 def train_linear_regression(X_train, X_test, y_train, y_test):
-    """Melatih Linear Regression dengan scaling dan mencetak metrik."""
+    """Melatih Linear Regression dengan scaling."""
     print("🔄 Training Linear Regression...")
     
-    # Create pipeline for deployment compatibility
+    # Create pipeline
     pipeline = Pipeline([
         ('scaler', StandardScaler()),
         ('regressor', LinearRegression())
@@ -79,15 +76,6 @@ def train_linear_regression(X_train, X_test, y_train, y_test):
     r2 = r2_score(y_test, y_pred)
     mae = mean_absolute_error(y_test, y_pred)
     
-    # Log metrics
-    mlflow.log_metric("rmse", rmse)
-    mlflow.log_metric("r2_score", r2)
-    mlflow.log_metric("mae", mae)
-    
-    # Log parameters
-    mlflow.log_param("model_type", "Linear Regression")
-    mlflow.log_param("scaler", "StandardScaler")
-    
     print("\n" + "="*50)
     print("📊 Linear Regression Results")
     print("="*50)
@@ -99,7 +87,7 @@ def train_linear_regression(X_train, X_test, y_train, y_test):
     return pipeline, rmse, r2, mae
 
 def train_random_forest(X_train, X_test, y_train, y_test):
-    """Melatih Random Forest dan mencetak metrik."""
+    """Melatih Random Forest."""
     print("🔄 Training Random Forest...")
     
     model = RandomForestRegressor(
@@ -115,16 +103,6 @@ def train_random_forest(X_train, X_test, y_train, y_test):
     rmse = np.sqrt(mean_squared_error(y_test, y_pred))
     r2 = r2_score(y_test, y_pred)
     mae = mean_absolute_error(y_test, y_pred)
-    
-    # Log metrics
-    mlflow.log_metric("rmse", rmse)
-    mlflow.log_metric("r2_score", r2)
-    mlflow.log_metric("mae", mae)
-    
-    # Log parameters
-    mlflow.log_param("model_type", "Random Forest")
-    mlflow.log_param("n_estimators", 200)
-    mlflow.log_param("max_depth", 10)
     
     print("\n" + "="*50)
     print("📊 Random Forest Results")
@@ -166,8 +144,8 @@ def main():
     )
     
     print(f"\n✂️  Train-Test Split:")
-    print(f"  Train: {X_train.shape[0]} samples ({X_train.shape[0]/len(X)*100:.1f}%)")
-    print(f"  Test: {X_test.shape[0]} samples ({X_test.shape[0]/len(X)*100:.1f}%)")
+    print(f"  Train: {X_train.shape[0]} samples")
+    print(f"  Test: {X_test.shape[0]} samples")
     
     # Setup MLflow
     print("\n" + "="*70)
@@ -175,6 +153,7 @@ def main():
     print("="*70)
     
     try:
+        # Initialize DagsHub
         dagshub.init(
             repo_owner='rezahmas',
             repo_name='boston-housing-mlflow',
@@ -182,16 +161,18 @@ def main():
         )
         print("✓ DagsHub initialized")
         
-        # FIX: Use experiment name from environment or default for CI
+        # Set experiment
         experiment_name = os.getenv('MLFLOW_EXPERIMENT_NAME', 'CI_Docker_Build')
         mlflow.set_experiment(experiment_name)
         print(f"✓ Experiment set: {experiment_name}")
         
-        # Disable autolog for explicit control
-        # mlflow.sklearn.autolog(log_models=False)
+        # ✅ DISABLE autolog to avoid conflicts
+        mlflow.sklearn.autolog(disable=True)
+        print("✓ Autolog disabled (using manual logging)")
         
     except Exception as e:
         print(f"⚠️  Warning: MLflow setup issue: {e}")
+        print("Continuing anyway...")
     
     # Store results
     results = []
@@ -206,7 +187,15 @@ def main():
             X_train, X_test, y_train, y_test
         )
         
-        # Store for comparison
+        # Log metrics
+        mlflow.log_metric("rmse", rmse_lr)
+        mlflow.log_metric("r2_score", r2_lr)
+        mlflow.log_metric("mae", mae_lr)
+        
+        # Log parameters
+        mlflow.log_param("model_type", "Linear_Regression")
+        mlflow.log_param("scaler", "StandardScaler")
+        
         results.append({
             'name': 'Linear_Regression',
             'model': model_lr,
@@ -228,7 +217,16 @@ def main():
             X_train, X_test, y_train, y_test
         )
         
-        # Store for comparison
+        # Log metrics
+        mlflow.log_metric("rmse", rmse_rf)
+        mlflow.log_metric("r2_score", r2_rf)
+        mlflow.log_metric("mae", mae_rf)
+        
+        # Log parameters
+        mlflow.log_param("model_type", "Random_Forest")
+        mlflow.log_param("n_estimators", 200)
+        mlflow.log_param("max_depth", 10)
+        
         results.append({
             'name': 'Random_Forest',
             'model': model_rf,
@@ -240,7 +238,7 @@ def main():
         
         print("✓ Random Forest completed")
     
-    # Determine best model (lowest RMSE)
+    # Determine best model
     best_result = min(results, key=lambda x: x['rmse'])
     
     print("\n" + "="*70)
@@ -252,37 +250,100 @@ def main():
         marker = "🏆" if res['name'] == best_result['name'] else "  "
         print(f"{marker} {res['name']:<25} {res['rmse']:<12.3f} {res['r2']:<12.3f} {res['mae']:<12.3f}")
     
-    # ✅ FIX: Log best model explicitly with artifact name "model"
+    # ✅ LOG BEST MODEL with explicit error handling
     print("\n" + "="*70)
-    print(f"🏆 BEST MODEL: {best_result['name']}")
+    print(f"🏆 LOGGING BEST MODEL: {best_result['name']}")
     print("="*70)
-    print(f"  RMSE: {best_result['rmse']:.3f}")
-    print(f"  R²: {best_result['r2']:.3f}")
-    print(f"  MAE: {best_result['mae']:.3f}")
     
-    # Create a final run for the best model
-    with mlflow.start_run(run_name=f"BEST_MODEL_{best_result['name']}") as run:
-        # Log all metrics
-        mlflow.log_metric("rmse", best_result['rmse'])
-        mlflow.log_metric("r2_score", best_result['r2'])
-        mlflow.log_metric("mae", best_result['mae'])
+    try:
+        with mlflow.start_run(run_name=f"BEST_MODEL_{best_result['name']}") as run:
+            # Log metrics
+            mlflow.log_metric("rmse", best_result['rmse'])
+            mlflow.log_metric("r2_score", best_result['r2'])
+            mlflow.log_metric("mae", best_result['mae'])
+            
+            # Log parameters
+            mlflow.log_param("model_type", best_result['name'])
+            mlflow.log_param("selected_as_best", "True")
+            mlflow.log_param("selection_metric", "rmse")
+            
+            print(f"✓ Metrics logged")
+            print(f"  - RMSE: {best_result['rmse']:.3f}")
+            print(f"  - R²: {best_result['r2']:.3f}")
+            print(f"  - MAE: {best_result['mae']:.3f}")
+            
+            # ✅ CRITICAL: Log model with explicit artifact path
+            print("\n📦 Logging model artifact...")
+            
+            # Get input example for model signature
+            input_example = X_train.iloc[:5]
+            
+            mlflow.sklearn.log_model(
+                sk_model=best_result['model'],
+                artifact_path="model",
+                registered_model_name=None,  # Don't register yet
+                input_example=input_example
+            )
+            
+            best_run_id = run.info.run_id
+            
+            print(f"✅ Model logged successfully!")
+            print(f"   Run ID: {best_run_id}")
+            print(f"   Run Name: BEST_MODEL_{best_result['name']}")
+            print(f"   Artifact Path: model")
+            
+            # Verify artifact was logged
+            print("\n🔍 Verifying artifact was logged...")
+            from mlflow.tracking import MlflowClient
+            client = MlflowClient()
+            
+            # Small delay to ensure write completes
+            import time
+            time.sleep(2)
+            
+            artifacts = client.list_artifacts(best_run_id)
+            artifact_paths = [a.path for a in artifacts]
+            
+            if "model" in artifact_paths:
+                print("✓ Artifact 'model' confirmed in run")
+                # List model contents
+                model_artifacts = client.list_artifacts(best_run_id, path="model")
+                print("  Model contents:")
+                for a in model_artifacts:
+                    print(f"    - {a.path}")
+            else:
+                print("⚠️  WARNING: Artifact 'model' not found immediately after logging")
+                print(f"   Available artifacts: {artifact_paths}")
+                print("   This might be a sync delay - checking DagsHub...")
+            
+    except Exception as e:
+        print(f"\n❌ ERROR logging best model: {e}")
+        import traceback
+        traceback.print_exc()
+        print("\n⚠️  Attempting fallback: logging without input_example...")
         
-        # Log params
-        mlflow.log_param("model_type", best_result['name'])
-        mlflow.log_param("selected_as_best", True)
-        mlflow.log_param("selection_metric", "rmse")
-        
-        # ✅ CRITICAL: Explicitly log model with artifact name "model"
-        mlflow.sklearn.log_model(
-            sk_model=best_result['model'],
-            artifact_path="model",  # This must match the Docker build command
-            registered_model_name=f"BostonHousing_{best_result['name']}"
-        )
-        
-        best_run_id = run.info.run_id
-        print(f"\n✅ Best model logged successfully!")
-        print(f"   Run ID: {best_run_id}")
-        print(f"   Artifact path: model")
+        try:
+            with mlflow.start_run(run_name=f"BEST_MODEL_{best_result['name']}_fallback") as run:
+                mlflow.log_metric("rmse", best_result['rmse'])
+                mlflow.log_metric("r2_score", best_result['r2'])
+                mlflow.log_metric("mae", best_result['mae'])
+                mlflow.log_param("model_type", best_result['name'])
+                mlflow.log_param("selected_as_best", "True")
+                
+                # Try without input_example
+                mlflow.sklearn.log_model(
+                    sk_model=best_result['model'],
+                    artifact_path="model"
+                )
+                
+                print("✓ Fallback logging succeeded")
+                best_run_id = run.info.run_id
+                print(f"   Run ID: {best_run_id}")
+                
+        except Exception as e2:
+            print(f"\n❌ FATAL: Fallback also failed: {e2}")
+            traceback.print_exc()
+            sys.exit(1)
     
     print("\n" + "="*70)
     print("✅ TRAINING PIPELINE COMPLETED!")
