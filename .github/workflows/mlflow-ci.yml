@@ -1,7 +1,9 @@
-name: CI Pipeline - Advance Flow
+name: CI Pipeline - MLflow Boston Housing
 
 on:
   push:
+    branches: ["main"]
+  pull_request:
     branches: ["main"]
   workflow_dispatch:
 
@@ -15,82 +17,401 @@ env:
 jobs:
   build-train-docker:
     runs-on: ubuntu-latest
-
+    
     steps:
-      # 1. Checkout Code
-      - name: Run actions/checkout@v3
+      # ==================== SETUP ====================
+      - name: 📥 Checkout repository
         uses: actions/checkout@v3
 
-      # 2. Setup Python
-      - name: Set up Python 3.12.7
+      - name: 🐍 Set up Python 3.12.7
         uses: actions/setup-python@v5
         with:
           python-version: "3.12.7"
+          cache: 'pip'
 
-      # 3. Cek Environment
-      - name: Check Env
+      - name: 🔍 Check environment
         run: |
+          echo "=================================="
+          echo "Environment Information"
+          echo "=================================="
           python --version
           pip --version
+          echo "Working directory: $(pwd)"
+          echo "=================================="
 
-      # 4. Install Dependencies
-      - name: Install dependencies
+      # ==================== DEPENDENCIES ====================
+      - name: 📦 Install dependencies
         run: |
+          echo "Installing Python dependencies..."
+          pip install --upgrade pip
           pip install -r Workflow-CI/MLProject/requirements.txt
+          pip install requests  # For future Google Drive upload
+          echo "✓ Dependencies installed"
 
-      # 5. Salin Dataset ke Folder preprocessing
-      - name: Copy dataset to preprocessing folder
+      # ==================== DATASET SETUP ====================
+      - name: 📂 Setup preprocessing directory
         run: |
+          echo "=================================="
+          echo "Setting up preprocessing folder"
+          echo "=================================="
           mkdir -p Workflow-CI/MLProject/preprocessing
-          cp -r $GITHUB_WORKSPACE/namadataset_raw/* Workflow-CI/MLProject/preprocessing/
+          echo "✓ Directory created"
 
-      # 6. Training Model (FIX: Pakai --env-manager=local)
-      - name: Run mlflow project
+      - name: 🔍 Debug - Check source dataset
         run: |
-          cd Workflow-CI/MLProject
-          mlflow run . --env-manager=local --experiment-name "CI_Docker_Build"
+          echo "=================================="
+          echo "Checking source dataset location"
+          echo "=================================="
+          
+          echo "Workspace structure:"
+          ls -la $GITHUB_WORKSPACE/
+          
+          echo ""
+          echo "Checking namadataset_raw folder..."
+          if [ -d "$GITHUB_WORKSPACE/namadataset_raw" ]; then
+            echo "✓ namadataset_raw folder EXISTS"
+            echo "Contents:"
+            ls -lah $GITHUB_WORKSPACE/namadataset_raw/
+            
+            FILE_COUNT=$(ls -1 $GITHUB_WORKSPACE/namadataset_raw/ 2>/dev/null | wc -l)
+            echo "Total files: $FILE_COUNT"
+          else
+            echo "❌ ERROR: namadataset_raw folder NOT FOUND"
+            echo "Available directories:"
+            find $GITHUB_WORKSPACE -maxdepth 2 -type d
+            exit 1
+          fi
 
-      # 7. Ambil Run ID Terakhir
-      - name: Get latest MLflow run_id
+      - name: 📋 Copy dataset to preprocessing folder
+        run: |
+          echo "=================================="
+          echo "Copying dataset files"
+          echo "=================================="
+          
+          # Check source exists
+          if [ ! -d "$GITHUB_WORKSPACE/namadataset_raw" ]; then
+            echo "❌ Source folder not found!"
+            exit 1
+          fi
+          
+          # Check source has files
+          SOURCE_FILES=$(ls -A $GITHUB_WORKSPACE/namadataset_raw/ 2>/dev/null | wc -l)
+          if [ "$SOURCE_FILES" -eq 0 ]; then
+            echo "❌ Source folder is empty!"
+            exit 1
+          fi
+          
+          echo "Copying $SOURCE_FILES file(s)..."
+          cp -v $GITHUB_WORKSPACE/namadataset_raw/* Workflow-CI/MLProject/preprocessing/
+          
+          # Verify copy
+          DEST_FILES=$(ls -A Workflow-CI/MLProject/preprocessing/ 2>/dev/null | wc -l)
+          if [ "$DEST_FILES" -eq 0 ]; then
+            echo "❌ Copy failed - destination is empty!"
+            exit 1
+          fi
+          
+          echo "✓ Successfully copied $DEST_FILES file(s)"
+
+      - name: ✅ Verify dataset files
+        run: |
+          echo "=================================="
+          echo "Verifying Dataset"
+          echo "=================================="
+          
+          cd Workflow-CI/MLProject
+          
+          echo "Contents of preprocessing folder:"
+          ls -lah preprocessing/
+          
+          echo ""
+          echo "Checking for HousingData_clean.csv..."
+          if [ -f "preprocessing/HousingData_clean.csv" ]; then
+            echo "✓ HousingData_clean.csv EXISTS"
+            echo "File size: $(du -h preprocessing/HousingData_clean.csv | cut -f1)"
+            echo "Line count: $(wc -l < preprocessing/HousingData_clean.csv)"
+            echo "First few lines:"
+            head -n 3 preprocessing/HousingData_clean.csv
+          else
+            echo "❌ ERROR: HousingData_clean.csv NOT FOUND!"
+            echo "Available files in preprocessing:"
+            ls -1 preprocessing/
+            exit 1
+          fi
+          
+          echo "=================================="
+          echo "✓ Dataset verification complete"
+          echo "=================================="
+
+      # ==================== MODEL TRAINING ====================
+      - name: 🚀 Train models with MLflow
+        run: |
+          echo "=================================="
+          echo "Starting MLflow Training"
+          echo "=================================="
+          
+          cd Workflow-CI/MLProject
+          
+          # Final check before training
+          if [ ! -f "preprocessing/HousingData_clean.csv" ]; then
+            echo "❌ Dataset missing before training!"
+            exit 1
+          fi
+          
+          # Run MLflow project
+          mlflow run . \
+            --env-manager=local \
+            --experiment-name "CI_Docker_Build"
+          
+          TRAIN_EXIT_CODE=$?
+          
+          if [ $TRAIN_EXIT_CODE -ne 0 ]; then
+            echo "❌ Training failed with exit code $TRAIN_EXIT_CODE"
+            exit 1
+          fi
+          
+          echo "=================================="
+          echo "✓ Training completed successfully"
+          echo "=================================="
+
+      # ==================== MLFLOW RUN MANAGEMENT ====================
+      - name: 🔍 Get latest MLflow run ID
         id: get_run_id
         run: |
+          echo "=================================="
+          echo "Retrieving MLflow Run Information"
+          echo "=================================="
+          
           cd Workflow-CI/MLProject
-          LAST_RUN_ID=$(mlflow runs list --experiment-id 1 --max-results 1 --output json | jq -r '. [0].run_id')
+          
+          # Get experiment ID by name
+          EXPERIMENT_NAME="CI_Docker_Build"
+          echo "Looking for experiment: $EXPERIMENT_NAME"
+          
+          EXPERIMENT_ID=$(mlflow experiments search \
+            --filter-string "name='$EXPERIMENT_NAME'" \
+            --output json | jq -r '.[0].experiment_id')
+          
+          if [ -z "$EXPERIMENT_ID" ] || [ "$EXPERIMENT_ID" = "null" ]; then
+            echo "❌ Experiment not found!"
+            echo "Available experiments:"
+            mlflow experiments search --output json | jq -r '.[] | "\(.experiment_id): \(.name)"'
+            exit 1
+          fi
+          
+          echo "✓ Found experiment ID: $EXPERIMENT_ID"
+          
+          # Get latest run
+          LAST_RUN_ID=$(mlflow runs list \
+            --experiment-id "$EXPERIMENT_ID" \
+            --max-results 1 \
+            --output json | jq -r '.[0].run_id')
+          
+          if [ -z "$LAST_RUN_ID" ] || [ "$LAST_RUN_ID" = "null" ]; then
+            echo "❌ No runs found in experiment!"
+            exit 1
+          fi
+          
           echo "RUN_ID=$LAST_RUN_ID" >> $GITHUB_ENV
-          echo "Latest Run ID: $LAST_RUN_ID"
+          echo "✓ Latest Run ID: $LAST_RUN_ID"
+          
+          # Get run details
+          echo ""
+          echo "Run details:"
+          mlflow runs describe --run-id "$LAST_RUN_ID" --output json | \
+            jq -r '"Status: \(.info.status)\nModel: \(.data.tags."mlflow.runName" // "N/A")"'
+          
+          echo "=================================="
 
-      # 8. Install dependency tambahan (Simulasi agar mirip target)
-      - name: Install Python dependencies
+      - name: ✅ Validate training results
         run: |
-          pip install requests
+          echo "=================================="
+          echo "Validating Model Performance"
+          echo "=================================="
+          
+          cd Workflow-CI/MLProject
+          
+          # Check run status
+          RUN_STATUS=$(mlflow runs describe \
+            --run-id "${{ env.RUN_ID }}" \
+            --output json | jq -r '.info.status')
+          
+          echo "Run status: $RUN_STATUS"
+          
+          if [ "$RUN_STATUS" != "FINISHED" ]; then
+            echo "❌ Training did not complete successfully!"
+            echo "Status: $RUN_STATUS"
+            exit 1
+          fi
+          
+          echo "✓ Training completed successfully"
+          
+          # Check model artifacts
+          echo ""
+          echo "Checking model artifacts..."
+          mlflow artifacts list --run-id "${{ env.RUN_ID }}" | grep -q "model"
+          
+          if [ $? -eq 0 ]; then
+            echo "✓ Model artifacts found"
+          else
+            echo "❌ Model artifacts missing!"
+            exit 1
+          fi
+          
+          # Get and display metrics
+          echo ""
+          echo "Model Metrics:"
+          mlflow runs describe --run-id "${{ env.RUN_ID }}" --output json | \
+            jq -r '.data.metrics | to_entries[] | "  \(.key): \(.value)"'
+          
+          echo "=================================="
 
-      # 9. Upload Google Drive (DUMMY / SIMULASI agar Centang Hijau)
-      - name: Upload to Google Drive
+      # ==================== DOCKER BUILD ====================
+      - name: 🐳 Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: 🏗️ Build Docker image from MLflow model
         run: |
-          echo "Simulating upload to Google Drive..."
-          echo "Authenticating..."
-          echo "Uploading model..."
-          echo "Upload to Google Drive completed (Success)."
+          echo "=================================="
+          echo "Building Docker Image"
+          echo "=================================="
+          
+          echo "Model URI: runs:/${{ env.RUN_ID }}/model"
+          echo "Image name: ${{ env.DOCKER_USER }}/${{ env.IMAGE_NAME }}:latest"
+          
+          mlflow models build-docker \
+            --model-uri "runs:/${{ env.RUN_ID }}/model" \
+            --name "${{ env.DOCKER_USER }}/${{ env.IMAGE_NAME }}:latest"
+          
+          if [ $? -eq 0 ]; then
+            echo "✓ Docker image built successfully"
+          else
+            echo "❌ Docker build failed!"
+            exit 1
+          fi
+          
+          echo "=================================="
 
-      # 10. Build Docker Image dari Model MLflow
-      - name: Build Docker Model
+      - name: 🧪 Test Docker image
         run: |
-          mlflow models build-docker --model-uri "runs:/${{ env.RUN_ID }}/model" --name "${{ env.DOCKER_USER }}/${{ env.IMAGE_NAME }}:latest"
+          echo "=================================="
+          echo "Testing Docker Image"
+          echo "=================================="
+          
+          # Start container
+          echo "Starting container..."
+          docker run -d -p 8080:8080 \
+            --name test-container \
+            ${{ env.DOCKER_USER }}/${{ env.IMAGE_NAME }}:latest
+          
+          # Wait for startup
+          echo "Waiting for container to start..."
+          sleep 15
+          
+          # Health check
+          echo "Running health check..."
+          curl -f http://localhost:8080/ping || {
+            echo "❌ Health check failed!"
+            echo "Container logs:"
+            docker logs test-container
+            docker stop test-container
+            docker rm test-container
+            exit 1
+          }
+          
+          echo "✓ Health check passed"
+          
+          # Test prediction (example - adjust based on your features)
+          echo ""
+          echo "Testing prediction endpoint..."
+          RESPONSE=$(curl -X POST http://localhost:8080/invocations \
+            -H "Content-Type: application/json" \
+            -d '{
+              "dataframe_split": {
+                "columns": ["CRIM","ZN","INDUS","CHAS","NOX","RM","AGE","DIS","RAD","TAX","PTRATIO","B","LSTAT"],
+                "data": [[0.00632,18.0,2.31,0.0,0.538,6.575,65.2,4.09,1.0,296.0,15.3,396.9,4.98]]
+              }
+            }')
+          
+          if [ $? -eq 0 ]; then
+            echo "✓ Prediction successful"
+            echo "Response: $RESPONSE"
+          else
+            echo "❌ Prediction test failed!"
+            docker logs test-container
+            docker stop test-container
+            docker rm test-container
+            exit 1
+          fi
+          
+          # Cleanup
+          echo ""
+          echo "Cleaning up test container..."
+          docker stop test-container
+          docker rm test-container
+          
+          echo "=================================="
+          echo "✓ Docker image tests passed"
+          echo "=================================="
 
-      # 11. Login ke Docker Hub
-      - name: Log in to Docker Hub
+      # ==================== DOCKER REGISTRY ====================
+      - name: 🔐 Log in to Docker Hub
         uses: docker/login-action@v3
         with:
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
 
-      # 12. Tag Image dengan SHA Commit (Versioning)
-      - name: Tag Docker Image
+      - name: 🏷️ Tag Docker image
         run: |
-          docker tag ${{ env.DOCKER_USER }}/${{ env.IMAGE_NAME }}:latest ${{ env.DOCKER_USER }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
+          echo "=================================="
+          echo "Tagging Docker Image"
+          echo "=================================="
+          
+          # Tag with commit SHA
+          docker tag \
+            ${{ env.DOCKER_USER }}/${{ env.IMAGE_NAME }}:latest \
+            ${{ env.DOCKER_USER }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
+          
+          # Tag with date
+          DATE_TAG=$(date +%Y%m%d-%H%M%S)
+          docker tag \
+            ${{ env.DOCKER_USER }}/${{ env.IMAGE_NAME }}:latest \
+            ${{ env.DOCKER_USER }}/${{ env.IMAGE_NAME }}:$DATE_TAG
+          
+          echo "✓ Tagged with:"
+          echo "  - latest"
+          echo "  - ${{ github.sha }}"
+          echo "  - $DATE_TAG"
+          echo "=================================="
 
-      # 13. Push Image ke Docker Hub
-      - name: Push Docker Image
+      - name: 📤 Push Docker image to registry
         run: |
+          echo "=================================="
+          echo "Pushing to Docker Hub"
+          echo "=================================="
+          
           docker push ${{ env.DOCKER_USER }}/${{ env.IMAGE_NAME }}:latest
           docker push ${{ env.DOCKER_USER }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
+          
+          echo "=================================="
+          echo "✓ Images pushed successfully"
+          echo "=================================="
+
+      # ==================== SUMMARY ====================
+      - name: 📊 Pipeline summary
+        if: always()
+        run: |
+          echo ""
+          echo "=========================================="
+          echo "🎉 CI/CD PIPELINE COMPLETED"
+          echo "=========================================="
+          echo ""
+          echo "📦 Artifacts:"
+          echo "  - MLflow Run: ${{ env.RUN_ID }}"
+          echo "  - Docker Image: ${{ env.DOCKER_USER }}/${{ env.IMAGE_NAME }}"
+          echo ""
+          echo "🔗 Links:"
+          echo "  - MLflow: https://dagshub.com/rezahmas/boston-housing-mlflow/experiments"
+          echo "  - Docker Hub: https://hub.docker.com/r/${{ env.DOCKER_USER }}/${{ env.IMAGE_NAME }}"
+          echo ""
+          echo "=========================================="
