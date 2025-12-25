@@ -7,13 +7,12 @@ import mlflow
 import mlflow.sklearn
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
-from sklearn.impute import SimpleImputer
 from sklearn.linear_model import LinearRegression
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.metrics import mean_squared_error, r2_score, mean_absolute_error
 
 def load_data(csv_path: str) -> pd.DataFrame:
-    """Membaca dataset preprocessing dari path yang diberikan."""
+    """Membaca dataset dari path yang diberikan."""
     
     # Get absolute path
     abs_path = os.path.abspath(csv_path)
@@ -27,13 +26,12 @@ def load_data(csv_path: str) -> pd.DataFrame:
         print(f"❌ ERROR: File not found: {csv_path}")
         print(f"Absolute path checked: {abs_path}")
         
-        # Try to find the file in common locations
+        # Try alternative paths
         possible_paths = [
-            'preprocessing/HousingData.csv',
+            'HousingData_clean.csv',
             'preprocessing/HousingData_clean.csv',
-            '../preprocessing/HousingData.csv',
-            'HousingData.csv',
-            os.path.join(os.path.dirname(__file__), 'preprocessing/HousingData.csv'),
+            '../HousingData_clean.csv',
+            os.path.join(os.path.dirname(__file__), 'HousingData_clean.csv'),
         ]
         
         print("\n🔍 Searching in alternative locations:")
@@ -54,15 +52,9 @@ def load_data(csv_path: str) -> pd.DataFrame:
                 item_type = "📁" if os.path.isdir(item) else "📄"
                 print(f"  {item_type} {item}")
             
-            if os.path.exists('preprocessing'):
-                print("\npreprocessing/ directory:")
-                for item in os.listdir('preprocessing'):
-                    item_type = "📁" if os.path.isdir(os.path.join('preprocessing', item)) else "📄"
-                    print(f"  {item_type} {item}")
-            
             raise FileNotFoundError(
                 f"Dataset file not found at any of the checked locations. "
-                f"Please ensure dataset CSV exists in the preprocessing folder."
+                f"Please ensure 'HousingData_clean.csv' exists in the MLProject directory."
             )
     
     # Load dataset
@@ -73,11 +65,17 @@ def load_data(csv_path: str) -> pd.DataFrame:
     # Check for missing values
     missing_count = df.isnull().sum().sum()
     if missing_count > 0:
-        print(f"\n⚠️  Dataset contains {missing_count} missing values")
+        print(f"⚠️  Warning: Dataset contains {missing_count} missing values")
         print("Missing values per column:")
         missing_per_col = df.isnull().sum()
         for col, count in missing_per_col[missing_per_col > 0].items():
             print(f"  - {col}: {count} ({count/len(df)*100:.1f}%)")
+        raise ValueError(
+            f"Dataset still contains missing values! "
+            f"Please use a properly cleaned dataset."
+        )
+    else:
+        print("✓ Dataset is clean - no missing values")
     
     # Validate target column
     if "MEDV" not in df.columns:
@@ -88,45 +86,9 @@ def load_data(csv_path: str) -> pd.DataFrame:
     
     return df
 
-def clean_data(df: pd.DataFrame) -> pd.DataFrame:
-    """Membersihkan dataset dari missing values."""
-    print("\n🧹 Cleaning dataset...")
-    
-    original_shape = df.shape
-    
-    # Check missing values in target
-    target_missing = df['MEDV'].isnull().sum()
-    if target_missing > 0:
-        print(f"  - Dropping {target_missing} rows with missing target values")
-        df = df.dropna(subset=['MEDV'])
-    
-    # For features, we'll use median imputation
-    feature_cols = [col for col in df.columns if col != 'MEDV']
-    missing_features = df[feature_cols].isnull().sum().sum()
-    
-    if missing_features > 0:
-        print(f"  - Imputing {missing_features} missing feature values with median")
-        imputer = SimpleImputer(strategy='median')
-        df[feature_cols] = imputer.fit_transform(df[feature_cols])
-    
-    # Verify no missing values remain
-    remaining_missing = df.isnull().sum().sum()
-    if remaining_missing > 0:
-        print(f"⚠️  Warning: {remaining_missing} missing values still remain")
-    else:
-        print("✓ All missing values handled")
-    
-    print(f"✓ Dataset cleaned: {original_shape[0]} → {df.shape[0]} rows (dropped {original_shape[0] - df.shape[0]})")
-    
-    return df
-
 def train_linear_regression(X_train, X_test, y_train, y_test):
     """Melatih Linear Regression dengan scaling dan mencetak metrik."""
     print("🔄 Training Linear Regression...")
-    
-    # Verify no NaN values
-    if X_train.isnull().any().any() or y_train.isnull().any():
-        raise ValueError("Training data contains NaN values!")
     
     scaler = StandardScaler()
     X_train_scaled = scaler.fit_transform(X_train)
@@ -141,7 +103,7 @@ def train_linear_regression(X_train, X_test, y_train, y_test):
     r2 = r2_score(y_test, y_pred)
     mae = mean_absolute_error(y_test, y_pred)
 
-    # Log additional metrics manually
+    # Log metrics
     mlflow.log_metric("rmse", rmse)
     mlflow.log_metric("r2_score", r2)
     mlflow.log_metric("mae", mae)
@@ -164,10 +126,6 @@ def train_random_forest(X_train, X_test, y_train, y_test):
     """Melatih Random Forest dan mencetak metrik."""
     print("🔄 Training Random Forest...")
     
-    # Verify no NaN values
-    if X_train.isnull().any().any() or y_train.isnull().any():
-        raise ValueError("Training data contains NaN values!")
-    
     model = RandomForestRegressor(
         n_estimators=200,
         random_state=42,
@@ -182,7 +140,7 @@ def train_random_forest(X_train, X_test, y_train, y_test):
     r2 = r2_score(y_test, y_pred)
     mae = mean_absolute_error(y_test, y_pred)
 
-    # Log additional metrics manually
+    # Log metrics
     mlflow.log_metric("rmse", rmse)
     mlflow.log_metric("r2_score", r2)
     mlflow.log_metric("mae", mae)
@@ -207,27 +165,21 @@ def main():
     print("🏠 BOSTON HOUSING PRICE PREDICTION - ML PIPELINE")
     print("="*70)
     
-    # Path ke dataset (support environment variable)
-    data_path = os.getenv('DATA_PATH', 'preprocessing/HousingData.csv')
+    # Path ke dataset clean (langsung dari MLProject folder)
+    data_path = os.getenv('DATA_PATH', 'HousingData_clean.csv')
     print(f"📍 Dataset path: {data_path}")
     
-    # Load data dengan error handling
+    # Load data
     try:
         df = load_data(data_path)
     except FileNotFoundError as e:
         print(f"\n❌ FATAL ERROR: {e}")
         sys.exit(1)
+    except ValueError as e:
+        print(f"\n❌ DATA ERROR: {e}")
+        sys.exit(1)
     except Exception as e:
         print(f"\n❌ Unexpected error loading data: {e}")
-        import traceback
-        traceback.print_exc()
-        sys.exit(1)
-
-    # Clean data (handle missing values)
-    try:
-        df = clean_data(df)
-    except Exception as e:
-        print(f"\n❌ Error cleaning data: {e}")
         import traceback
         traceback.print_exc()
         sys.exit(1)
@@ -240,16 +192,6 @@ def main():
     print(f"  Features shape: {X.shape}")
     print(f"  Target shape: {y.shape}")
     print(f"  Feature columns: {list(X.columns)}")
-    
-    # Final verification
-    if X.isnull().any().any():
-        print("\n❌ ERROR: Features still contain NaN values!")
-        sys.exit(1)
-    if y.isnull().any():
-        print("\n❌ ERROR: Target still contains NaN values!")
-        sys.exit(1)
-    
-    print("✓ Data verification passed - no missing values")
 
     # Train-test split
     X_train, X_test, y_train, y_test = train_test_split(
@@ -260,13 +202,12 @@ def main():
     print(f"  Train set: {X_train.shape[0]} samples ({X_train.shape[0]/len(X)*100:.1f}%)")
     print(f"  Test set: {X_test.shape[0]} samples ({X_test.shape[0]/len(X)*100:.1f}%)")
 
-    # Setup DagsHub dan MLflow
+    # Setup MLflow
     print("\n" + "="*70)
     print("🔧 Setting up MLflow tracking...")
     print("="*70)
     
     try:
-        # Check if running in CI environment
         if os.getenv('MLFLOW_TRACKING_URI'):
             print("✓ Running in CI/CD environment")
             print(f"  Tracking URI: {os.getenv('MLFLOW_TRACKING_URI')}")
@@ -286,9 +227,9 @@ def main():
         
     except Exception as e:
         print(f"⚠️  Warning: MLflow setup issue: {e}")
-        print("Continuing with MLflow tracking (credentials from env)...")
+        print("Continuing with MLflow tracking...")
 
-    # --------- Run 1: Linear Regression ---------
+    # Train Linear Regression
     print("\n" + "="*70)
     print("🚀 MODEL 1: LINEAR REGRESSION")
     print("="*70)
@@ -305,7 +246,7 @@ def main():
         traceback.print_exc()
         sys.exit(1)
 
-    # --------- Run 2: Random Forest ---------
+    # Train Random Forest
     print("\n" + "="*70)
     print("🚀 MODEL 2: RANDOM FOREST REGRESSOR")
     print("="*70)
