@@ -1,4 +1,4 @@
-name: Basic ML Workflow (Clean)
+name: Basic ML Workflow
 
 on:
   push:
@@ -11,40 +11,35 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    # 1. Checkout Code
-    - name: Run actions/checkout@v3
-      uses: actions/checkout@v3
+    # 1. Checkout (Biar namanya "Run actions/checkout@v3")
+    - uses: actions/checkout@v3
 
-    # 2. Setup Python
-    - name: Set up Python 3.9
+    # 2. Setup Python (Saya set 3.12 biar persis gambar kamu)
+    - name: Set up Python 3.12
       uses: actions/setup-python@v4
       with:
-        python-version: "3.9"
+        python-version: "3.12"
 
-    # 3. Check Environment (Biar ada langkah 'Check Env' kayak di gambar)
+    # 3. Check Env (Langkah custom sesuai gambar)
     - name: Check Env
       run: |
-        echo "Current Directory:"
         pwd
-        echo "Python Version:"
-        python --version
-        echo "Files in Repo:"
         ls -R
 
-    # 4. Install Dependencies (Dipisah biar rapi)
+    # 4. Install dependencies (Langkah custom sesuai gambar)
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
         pip install mlflow pandas scikit-learn numpy matplotlib
 
-    # 5. Run MLflow Project (Inti Proses)
+    # 5. Run mlflow project (Langkah custom sesuai gambar)
     - name: Run mlflow project
       run: |
         cd SMSML_Fathan-Rezah-Ardhiansa/Membangun_model
-        # Menggunakan env-manager=local karena kita sudah install pip di atas
+        # --experiment-name ini PENTING biar langkah selanjutnya bisa nemu ID-nya
         mlflow run . --env-manager=local --experiment-name "Housing_Price_Prediction"
 
-    # 6. Get Latest Run ID (Biar persis sama gambar target kamu)
+    # 6. Get latest MLflow run_id (Langkah custom sesuai gambar)
     - name: Get latest MLflow run_id
       run: |
         cd SMSML_Fathan-Rezah-Ardhiansa/Membangun_model

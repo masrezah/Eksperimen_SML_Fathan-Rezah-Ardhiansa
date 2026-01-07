@@ -12,8 +12,6 @@ import os
 script_dir = os.path.dirname(os.path.abspath(__file__))
 DATA_PATH = os.path.join(script_dir, 'housing_preprocessing', 'clean_housing_data.csv')
 
-print(f"Mencari data di: {DATA_PATH}")
-
 if not os.path.exists(DATA_PATH):
     raise FileNotFoundError(f"File tidak ditemukan di: {DATA_PATH}")
 
@@ -47,34 +45,31 @@ r2 = r2_score(y_test, y_pred)
 print(f"Hasil -> MAE: {mae:.2f}, MSE: {mse:.2f}, R2: {r2:.2f}")
 
 # ==========================================
-# 4. MLflow Tracking (SIMPLIFIED & ROBUST)
+# 4. MLflow Tracking (SOLUSI BIAR GAK ERROR DI GITHUB)
 # ==========================================
 print("Menyimpan log ke MLflow...")
 
-# Logika Baru: 
-# Kita tidak perlu if/else active_run.
-# Cukup cek apakah ada MLFLOW_RUN_ID di environment system (tanda dari GitHub Actions)
-
+# Cek apakah sedang dijalankan oleh GitHub Actions (mlflow run)
 if os.environ.get('MLFLOW_RUN_ID'):
-    print("Running in GitHub Actions/MLflow Project mode.")
-    # Di mode ini, eksperimen sudah diatur oleh perintah 'mlflow run' di YAML
-    # JANGAN set_experiment di sini supaya tidak konflik.
+    # JIKA DI GITHUB: Jangan set_experiment! Langsung log ke ID yang sudah disiapkan.
+    print("Mode GitHub Actions terdeteksi.")
+    with mlflow.start_run():
+        mlflow.log_param("n_estimators", n_estimators)
+        mlflow.log_param("max_depth", max_depth)
+        mlflow.log_metric("mae", mae)
+        mlflow.log_metric("mse", mse)
+        mlflow.log_metric("r2_score", r2)
+        mlflow.sklearn.log_model(model, "model")
 else:
-    print("Running in Local Manual mode.")
-    # Di mode manual, kita set nama eksperimennya
-    mlflow.set_experiment("Housing_Price_Prediction_Basic")
+    # JIKA DI LAPTOP (MANUAL): Baru bikin eksperimen sendiri.
+    print("Mode Lokal terdeteksi.")
+    mlflow.set_experiment("Housing_Price_Prediction")
+    with mlflow.start_run(run_name="RandomForest_Local"):
+        mlflow.log_param("n_estimators", n_estimators)
+        mlflow.log_param("max_depth", max_depth)
+        mlflow.log_metric("mae", mae)
+        mlflow.log_metric("mse", mse)
+        mlflow.log_metric("r2_score", r2)
+        mlflow.sklearn.log_model(model, "model")
 
-# start_run() TANPA parameter adalah kuncinya.
-# - Jika ada MLFLOW_RUN_ID (dari GitHub), dia akan otomatis Lanjut (Resume).
-# - Jika tidak ada (Local), dia akan bikin run baru.
-with mlflow.start_run():
-    mlflow.log_param("n_estimators", n_estimators)
-    mlflow.log_param("max_depth", max_depth)
-    
-    mlflow.log_metric("mae", mae)
-    mlflow.log_metric("mse", mse)
-    mlflow.log_metric("r2_score", r2)
-    
-    mlflow.sklearn.log_model(model, "model")
-
-print("Selesai! Model berhasil disimpan.")
+print("Selesai! Log tersimpan.")
