@@ -33,4 +33,4 @@ jobs:
     - name: Run Model Training with MLflow
       run: |
         cd SMSML_Fathan-Rezah-Ardhiansa/Membangun_model
-        mlflow run . --no-conda
+        mlflow run . --env-manager=local
