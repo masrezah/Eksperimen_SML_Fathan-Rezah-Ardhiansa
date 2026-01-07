@@ -59,23 +59,34 @@ r2 = r2_score(y_test, y_pred)
 print(f"Hasil -> MAE: {mae:.2f}, MSE: {mse:.2f}, R2: {r2:.2f}")
 
 # ==========================================
-# 4. MLflow Tracking
+# 4. MLflow Tracking (FIXED)
 # ==========================================
-# Berikan nama eksperimen yang berbeda agar rapi (opsional)
-mlflow.set_experiment("Housing_Price_Prediction_Basic")
-
 print("Menyimpan log ke MLflow...")
-with mlflow.start_run(run_name="RandomForest_Basic"):
-    # Log Parameter yang kita tentukan tadi
-    mlflow.log_param("n_estimators", n_estimators)
-    mlflow.log_param("max_depth", max_depth)
-    
-    # Log Metrics hasil evaluasi
-    mlflow.log_metric("mae", mae)
-    mlflow.log_metric("mse", mse)
-    mlflow.log_metric("r2_score", r2)
-    
-    # Log Model (Simpan Artefak Model)
-    mlflow.sklearn.log_model(model, "model")
 
-print("Selesai! Model dasar berhasil dilatih dan disimpan di MLflow.")
+# Hapus set_experiment dan run_name. 
+# Biarkan mlflow mengambil active run yang dibuat oleh perintah 'mlflow run'
+if mlflow.active_run():
+    with mlflow.start_run():
+        # Log Metrics
+        mlflow.log_metric("mae", mae)
+        mlflow.log_metric("mse", mse)
+        mlflow.log_metric("r2_score", r2)
+        
+        # Log Parameter
+        mlflow.log_param("n_estimators", n_estimators)
+        mlflow.log_param("max_depth", max_depth)
+        
+        # Log Model
+        mlflow.sklearn.log_model(model, "model")
+else:
+    # Fallback jika dijalankan manual python biasa (bukan mlflow run)
+    mlflow.set_experiment("Housing_Price_Prediction_Basic")
+    with mlflow.start_run(run_name="RandomForest_Basic"):
+        mlflow.log_metric("mae", mae)
+        mlflow.log_metric("mse", mse)
+        mlflow.log_metric("r2_score", r2)
+        mlflow.log_param("n_estimators", n_estimators)
+        mlflow.log_param("max_depth", max_depth)
+        mlflow.sklearn.log_model(model, "model")
+
+print("Selesai! Model berhasil disimpan.")
