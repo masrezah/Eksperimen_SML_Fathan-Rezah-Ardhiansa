@@ -47,29 +47,34 @@ r2 = r2_score(y_test, y_pred)
 print(f"Hasil -> MAE: {mae:.2f}, MSE: {mse:.2f}, R2: {r2:.2f}")
 
 # ==========================================
-# 4. MLflow Tracking (LOGIC FIX)
+# 4. MLflow Tracking (SIMPLIFIED & ROBUST)
 # ==========================================
 print("Menyimpan log ke MLflow...")
 
-# Fungsi helper untuk melakukan logging biar tidak nulis ulang
-def log_to_mlflow():
+# Logika Baru: 
+# Kita tidak perlu if/else active_run.
+# Cukup cek apakah ada MLFLOW_RUN_ID di environment system (tanda dari GitHub Actions)
+
+if os.environ.get('MLFLOW_RUN_ID'):
+    print("Running in GitHub Actions/MLflow Project mode.")
+    # Di mode ini, eksperimen sudah diatur oleh perintah 'mlflow run' di YAML
+    # JANGAN set_experiment di sini supaya tidak konflik.
+else:
+    print("Running in Local Manual mode.")
+    # Di mode manual, kita set nama eksperimennya
+    mlflow.set_experiment("Housing_Price_Prediction_Basic")
+
+# start_run() TANPA parameter adalah kuncinya.
+# - Jika ada MLFLOW_RUN_ID (dari GitHub), dia akan otomatis Lanjut (Resume).
+# - Jika tidak ada (Local), dia akan bikin run baru.
+with mlflow.start_run():
     mlflow.log_param("n_estimators", n_estimators)
     mlflow.log_param("max_depth", max_depth)
+    
     mlflow.log_metric("mae", mae)
     mlflow.log_metric("mse", mse)
     mlflow.log_metric("r2_score", r2)
+    
     mlflow.sklearn.log_model(model, "model")
-    print("Log berhasil disimpan.")
 
-# LOGIC PENTING:
-# Cek apakah script ini dijalankan oleh "mlflow run" (GitHub Actions)
-if mlflow.active_run():
-    # Kalo dijalankan otomatis, kita LANGSUNG log (karena run sudah dibuatkan oleh sistem)
-    print("Mode Otomatis terdeteksi (GitHub Actions/MLflow Run).")
-    log_to_mlflow()
-else:
-    # Kalo dijalankan manual (pake python biasa di laptop), baru kita bikin run sendiri
-    print("Mode Manual terdeteksi.")
-    mlflow.set_experiment("Housing_Price_Prediction_Basic")
-    with mlflow.start_run(run_name="RandomForest_Basic"):
-        log_to_mlflow()
+print("Selesai! Model berhasil disimpan.")
