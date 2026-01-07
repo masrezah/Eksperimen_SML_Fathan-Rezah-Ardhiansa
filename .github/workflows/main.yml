@@ -1,4 +1,4 @@
-name: CI Workflow for ML Project
+name: Basic ML Workflow (Clean)
 
 on:
   push:
@@ -11,26 +11,41 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    # 1. Ambil kode dari repository
-    - name: Checkout code
+    # 1. Checkout Code
+    - name: Run actions/checkout@v3
       uses: actions/checkout@v3
 
-    # 2. Siapkan Python
+    # 2. Setup Python
     - name: Set up Python 3.9
       uses: actions/setup-python@v4
       with:
         python-version: "3.9"
 
-    # 3. Install Dependencies (Termasuk MLflow)
+    # 3. Check Environment (Biar ada langkah 'Check Env' kayak di gambar)
+    - name: Check Env
+      run: |
+        echo "Current Directory:"
+        pwd
+        echo "Python Version:"
+        python --version
+        echo "Files in Repo:"
+        ls -R
+
+    # 4. Install Dependencies (Dipisah biar rapi)
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
         pip install mlflow pandas scikit-learn numpy matplotlib
 
-    # 4. Jalankan MLflow Run
-    # Kita masuk dulu ke folder 'SMSML_...' lalu masuk ke 'Membangun_model'
-    # Karena file MLproject ada di dalam situ.
-    - name: Run Model Training with MLflow
+    # 5. Run MLflow Project (Inti Proses)
+    - name: Run mlflow project
       run: |
         cd SMSML_Fathan-Rezah-Ardhiansa/Membangun_model
-        mlflow run . --env-manager=local --experiment-name "Housing_Price_Prediction_Basic"
+        # Menggunakan env-manager=local karena kita sudah install pip di atas
+        mlflow run . --env-manager=local --experiment-name "Housing_Price_Prediction"
+
+    # 6. Get Latest Run ID (Biar persis sama gambar target kamu)
+    - name: Get latest MLflow run_id
+      run: |
+        cd SMSML_Fathan-Rezah-Ardhiansa/Membangun_model
+        python -c "import mlflow; runs = mlflow.search_runs(experiment_names=['Housing_Price_Prediction']); print(f'Latest Run ID: {runs.iloc[0].run_id}') if not runs.empty else print('No runs found')"
