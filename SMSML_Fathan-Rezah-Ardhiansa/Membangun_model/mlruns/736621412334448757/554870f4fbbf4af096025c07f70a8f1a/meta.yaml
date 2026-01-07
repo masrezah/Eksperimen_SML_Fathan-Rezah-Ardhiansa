@@ -1,0 +1,15 @@
+artifact_uri: file:///Users/nasyrunadetiya/Downloads/Eksperimen_SML_Fathan-Rezah-Ardhiansa-main/Membangun_model/mlruns/736621412334448757/554870f4fbbf4af096025c07f70a8f1a/artifacts
+end_time: 1767686480891
+entry_point_name: ''
+experiment_id: '736621412334448757'
+lifecycle_stage: active
+run_id: 554870f4fbbf4af096025c07f70a8f1a
+run_name: RandomForest_Tuning
+run_uuid: 554870f4fbbf4af096025c07f70a8f1a
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1767686475780
+status: 3
+tags: []
+user_id: nasyrunadetiya
